@@ -1,5 +1,5 @@
 {
-  "name": "onecli",
+  "name": "onecli-cloud",
   "private": true,
   "scripts": {
     "build": "dotenv -e .env -- turbo run build",
@@ -43,5 +43,9 @@
     "*.{ts,tsx,js,jsx,md,css,json}": [
       "prettier --write"
     ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amirshub/onecli-cloud.git"
   }
 }

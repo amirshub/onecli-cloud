@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" role="img" aria-label="Home Assistant">
+  <title>Home Assistant</title>
+  <path
+    fill="#18BCF2"
+    d="M12 3 3 9v11h7v-7h4v7h7V9L12 3Z"
+  />
+  <path fill="#F4B400" d="M12 8.5 9.5 10h5L12 8.5Z" />
+</svg>

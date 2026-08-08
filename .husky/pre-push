@@ -1,1 +1,4 @@
+# Git hooks use a minimal PATH; rustup installs cargo in ~/.cargo/bin
+export PATH="${HOME}/.cargo/bin:${PATH}"
+
 TURBO_UI=false pnpm run check

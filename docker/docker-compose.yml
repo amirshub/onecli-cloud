@@ -22,7 +22,10 @@ services:
       - onecli
 
   onecli:
-    image: ghcr.io/onecli/onecli:${ONECLI_VERSION:-latest}
+    image: ${ONECLI_IMAGE:-onecli:local}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: onecli
     restart: unless-stopped
     depends_on:
@@ -38,11 +41,10 @@ services:
       # links it puts in agent-facing responses — it answers proxy calls, so it
       # has no browser request to derive an address from.
       #
-      # The default below assumes you reach OneCLI at the address Docker binds
-      # to, which holds for a local or single-host install. When it doesn't — a
-      # tunnel, a reverse proxy, a real domain — set APP_URL instead of relying
-      # on it: either export it, or put it in a `.env` beside this file.
-      APP_URL: ${APP_URL:-http://${ONECLI_BIND_HOST:-127.0.0.1}:${ONECLI_APP_PORT:-10254}}
+      # ONECLI_BIND_HOST is only for Docker port publishing (e.g. 0.0.0.0).
+      # Browser and OAuth need a real hostname — default localhost. If you bind
+      # to a LAN IP, set ONECLI_PUBLIC_HOST (or APP_URL) to the host users open.
+      APP_URL: ${APP_URL:-http://${ONECLI_PUBLIC_HOST:-localhost}:${ONECLI_APP_PORT:-10254}}
       GATEWAY_API_URL: http://${ONECLI_BIND_HOST:-127.0.0.1}:${ONECLI_GATEWAY_PORT:-10255}
       # Where the gateway reaches the Node API. Both run in this one container
       # (see docker/entrypoint.sh), so it is a loopback call and never leaves it.

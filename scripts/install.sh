@@ -1,14 +1,22 @@
 #!/bin/sh
 
 # OneCLI - Open-Source Credential Vault for AI Agents
-# Source: https://github.com/onecli/onecli
+# Source: https://github.com/amirshub/onecli-cloud (upstream: https://github.com/onecli/onecli)
 # License: See repository for license details
 #
 # Usage: curl -fsSL https://onecli.sh/install | sh
 #
-# Custom bind host:
+# Custom bind host (Docker port publish address only):
 #   export ONECLI_BIND_HOST=192.168.1.50
 #   curl -fsSL https://onecli.sh/install | sh
+#
+# Listen on all interfaces but keep OAuth/browser URLs on localhost:
+#   export ONECLI_BIND_HOST=0.0.0.0
+#   export ONECLI_PUBLIC_HOST=localhost
+#   curl -fsSL https://onecli.sh/install | sh
+#
+# The installer sets ONECLI_PUBLIC_HOST from ONECLI_BIND_HOST for non-loopback binds.
+# Override ONECLI_PUBLIC_HOST if your browser URL should differ (defaults to localhost in compose).
 #
 # Custom PostgreSQL port (if 5432 is already in use):
 #   export POSTGRES_PORT=5433
@@ -28,7 +36,7 @@
 
 INSTALL_DIR="$HOME/.onecli"
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-COMPOSE_URL="https://raw.githubusercontent.com/onecli/onecli/main/docker/docker-compose.yml"
+COMPOSE_URL="https://raw.githubusercontent.com/amirshub/onecli-cloud/main/docker/docker-compose.yml"
 PROJECT_NAME="onecli"
 
 # Detect the correct bind host for Docker port bindings.
@@ -105,6 +113,15 @@ main() {
   export ONECLI_BIND_HOST
   echo "  Bind host: $ONECLI_BIND_HOST"
 
+  # Public URL host for compose (OAuth / browser). When not set, compose defaults to localhost.
+  if [ -z "$ONECLI_PUBLIC_HOST" ] && [ "$ONECLI_BIND_HOST" != "0.0.0.0" ] && [ "$ONECLI_BIND_HOST" != "127.0.0.1" ]; then
+    export ONECLI_PUBLIC_HOST="$ONECLI_BIND_HOST"
+    echo "  Public host (OAuth / open in browser): $ONECLI_PUBLIC_HOST"
+  elif [ -n "$ONECLI_PUBLIC_HOST" ]; then
+    export ONECLI_PUBLIC_HOST
+    echo "  Public host (OAuth / open in browser): $ONECLI_PUBLIC_HOST"
+  fi
+
   # ── Resolve version ──
 
   ONECLI_VERSION="${ONECLI_VERSION:-latest}"
@@ -168,14 +185,13 @@ main() {
 
   # ── Pull and start ──
 
-  echo "  Pulling latest images..."
-  if ! docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" pull; then
-    echo "Error: Failed to pull OneCLI images. Check your network connection." >&2
-    exit 1
+  echo "  Building / pulling images..."
+  if ! docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" pull 2>/dev/null; then
+    echo "  (pull skipped or failed — will build local image if needed)"
   fi
 
   echo "  Starting OneCLI..."
-  if ! docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --wait; then
+  if ! docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --build --wait; then
     echo "" >&2
     echo "Error: Failed to start OneCLI." >&2
     exit 1
@@ -183,12 +199,16 @@ main() {
 
   # ── Success ──
 
+  # After the public-host block above, ONECLI_PUBLIC_HOST is set for non-loopback binds;
+  # otherwise compose defaults to localhost (required when bind is 0.0.0.0 for OAuth).
+  APP_HOST="${ONECLI_PUBLIC_HOST:-localhost}"
+
   echo ""
   echo "  OneCLI is running!"
-  echo "  ONECLI_URL:  http://$ONECLI_BIND_HOST:${ONECLI_APP_PORT:-10254}"
+  echo "  ONECLI_URL:  http://$APP_HOST:${ONECLI_APP_PORT:-10254}"
   echo ""
-  echo "  Dashboard:  http://$ONECLI_BIND_HOST:${ONECLI_APP_PORT:-10254}"
-  echo "  Gateway:    http://$ONECLI_BIND_HOST:${ONECLI_GATEWAY_PORT:-10255}"
+  echo "  Dashboard:  http://$APP_HOST:${ONECLI_APP_PORT:-10254}"
+  echo "  Gateway:    http://$APP_HOST:${ONECLI_GATEWAY_PORT:-10255}"
   echo ""
   echo "  Reaching OneCLI at another address (tunnel, proxy, domain)? Set APP_URL in $INSTALL_DIR/.env"
   echo ""

@@ -54,10 +54,12 @@ curl -fsSL https://onecli.sh/install | sh
 Or, if you prefer to run it manually:
 
 ```bash
-git clone https://github.com/onecli/onecli.git
-cd onecli
+git clone https://github.com/amirshub/onecli-cloud.git
+cd onecli-cloud
 docker compose -f docker/docker-compose.yml up -d --wait
 ```
+
+Upstream OneCLI lives at [github.com/onecli/onecli](https://github.com/onecli/onecli); this repo tracks it with optional `upstream` remote for merges.
 
 Open **http://localhost:10254**, create an agent, add your secrets, and point your agent's HTTP gateway to `localhost:10255`.
 

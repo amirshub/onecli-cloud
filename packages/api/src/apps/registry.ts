@@ -38,6 +38,9 @@ import { trello } from "./trello";
 import { monday } from "./monday";
 import { vercel } from "./vercel";
 import { jfrogArtifactory } from "./jfrog-artifactory";
+import { airtable } from "./airtable";
+import { bedrock } from "./bedrock";
+import { homeAssistant } from "./home-assistant";
 
 const staticApps: AppDefinition[] = [
   gmail,
@@ -78,6 +81,9 @@ const staticApps: AppDefinition[] = [
   trello,
   vercel,
   jfrogArtifactory,
+  airtable,
+  bedrock,
+  homeAssistant,
 ];
 
 export const getApps = (): AppDefinition[] => {

@@ -10,7 +10,8 @@ export const googleDrive: AppDefinition = {
   id: "google-drive",
   name: "Google Drive",
   icon: "/icons/google-drive.svg",
-  description: "Read, create, and manage files and folders.",
+  description:
+    "Drive, Docs, Sheets, and Slides — files, folders, and document APIs in one connection.",
   connectionMethod: {
     type: "oauth",
     defaultScopes: [
@@ -19,6 +20,9 @@ export const googleDrive: AppDefinition = {
       "profile",
       "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/presentations",
     ],
     permissions: [
       {
@@ -31,6 +35,24 @@ export const googleDrive: AppDefinition = {
         scope: "https://www.googleapis.com/auth/drive.file",
         name: "Manage app files",
         description: "Create and edit files opened or created by OneCLI",
+        access: "write",
+      },
+      {
+        scope: "https://www.googleapis.com/auth/documents",
+        name: "Google Docs",
+        description: "View and edit Google Docs documents",
+        access: "write",
+      },
+      {
+        scope: "https://www.googleapis.com/auth/spreadsheets",
+        name: "Google Sheets",
+        description: "View and edit Google Sheets spreadsheets",
+        access: "write",
+      },
+      {
+        scope: "https://www.googleapis.com/auth/presentations",
+        name: "Google Slides",
+        description: "View and edit Google Slides presentations",
         access: "write",
       },
       {

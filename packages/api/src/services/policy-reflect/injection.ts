@@ -64,6 +64,39 @@ export const grantedSecretSelection = (
 };
 
 /**
+ * Which APP CONNECTIONS a selective agent's published rules grant: specific
+ * connection ids, plus provider-level grants (`app` target with
+ * `appConnectionScope`). Used by container-config for Bedrock / Home Assistant
+ * env injection (fail-closed when nothing is granted).
+ */
+export const grantedConnectionSelection = (
+  rules: SimRuleRow[],
+  agentId: string,
+  principals: PrincipalSet,
+): { ids: string[]; providers: Set<string> } => {
+  const ids = new Set<string>();
+  const providers = new Set<string>();
+  for (const row of rules) {
+    if (row.isDefault || row.action !== "allow") continue;
+    if (!injectionIdentityMatches(row.identities, agentId, principals))
+      continue;
+    for (const t of row.targets) {
+      if (t.kind === "connection" && t.appConnectionId) {
+        ids.add(t.appConnectionId);
+      } else if (
+        t.kind === "app" &&
+        t.appProvider &&
+        (t.appConnectionScope === "project" ||
+          t.appConnectionScope === "organization")
+      ) {
+        providers.add(t.appProvider);
+      }
+    }
+  }
+  return { ids: [...ids], providers };
+};
+
+/**
  * Build the host-match predicate for whether a credential would INJECT for an
  * agent + host (the deny-default carve's `hasInjections` input). The injectable
  * set is the union of:

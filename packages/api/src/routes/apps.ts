@@ -21,6 +21,11 @@ import {
   verifyOAuthState,
   generateNonce,
 } from "../lib/oauth-state";
+import {
+  generatePkcePair,
+  OAUTH_PKCE_COOKIE_NAME,
+  oauthPkceCookiePath,
+} from "../lib/oauth-pkce";
 import { NODE_ENV } from "../lib/env";
 import { dashboardUrl } from "../lib/dashboard-url";
 import { getRequestOrigin, getAppOrigin } from "../lib/request-origin";
@@ -441,11 +446,20 @@ export const appRoutes = () => {
       const redirectUri = `${getRequestOrigin(c.req.raw)}/v1/apps/${provider}/callback`;
       const scopes = appDef.connectionMethod.defaultScopes ?? [];
 
+      const requiresPkce = appDef.connectionMethod.requiresPkce === true;
+      const pkce = requiresPkce ? generatePkcePair() : null;
+
       const authUrl = appDef.connectionMethod.buildAuthUrl({
         appCredentials: creds,
         redirectUri,
         scopes,
         state,
+        ...(pkce
+          ? {
+              codeChallenge: pkce.codeChallenge,
+              codeChallengeMethod: "S256" as const,
+            }
+          : {}),
       });
 
       setCookie(c, "oauth_state", state, {
@@ -455,6 +469,16 @@ export const appRoutes = () => {
         path: `/v1/apps/${provider}/callback`,
         maxAge: 600,
       });
+
+      if (pkce) {
+        setCookie(c, OAUTH_PKCE_COOKIE_NAME, pkce.codeVerifier, {
+          httpOnly: true,
+          secure: NODE_ENV === "production",
+          sameSite: "Lax",
+          path: oauthPkceCookiePath(provider),
+          maxAge: 600,
+        });
+      }
 
       return c.redirect(authUrl);
     },
@@ -586,11 +610,26 @@ export const appRoutes = () => {
       const url = new URL(c.req.url);
       const callbackParams = Object.fromEntries(url.searchParams.entries());
 
+      const codeVerifier =
+        appDef.connectionMethod.requiresPkce === true
+          ? getCookie(c, OAUTH_PKCE_COOKIE_NAME)
+          : undefined;
+      if (appDef.connectionMethod.requiresPkce === true && !codeVerifier) {
+        return errorRedirect("Missing PKCE verifier");
+      }
+
       const result = await appDef.connectionMethod.exchangeCode({
         appCredentials: resolved.values,
         callbackParams,
         redirectUri,
+        ...(codeVerifier ? { codeVerifier } : {}),
       });
+
+      if (appDef.connectionMethod.requiresPkce === true) {
+        deleteCookie(c, OAUTH_PKCE_COOKIE_NAME, {
+          path: oauthPkceCookiePath(provider),
+        });
+      }
 
       const { credentials, scopes, metadata } = result;
 

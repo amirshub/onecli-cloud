@@ -113,10 +113,17 @@ export const resolveConnectCredentials = async (
     metadata = result.metadata;
   } else {
     const primaryField = activeMethod.fields[0];
-    credentials = {
-      access_token: fields[primaryField!.name],
-      ...fields,
+    const creds: Record<string, unknown> = {
+      access_token: fields[primaryField!.name]!.trim(),
     };
+    for (const f of activeMethod.fields) {
+      if (f.name === primaryField!.name) continue;
+      // Nickname is display-only (metadata); do not persist in credentials.
+      if (provider === "bedrock" && f.name === "nickname") continue;
+      const v = fields[f.name]?.trim();
+      if (v) creds[f.name] = v;
+    }
+    credentials = creds;
 
     if (activeMethod.resolveMetadata) {
       try {

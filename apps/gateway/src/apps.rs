@@ -50,6 +50,8 @@ pub(crate) enum HostPattern {
     /// Match any hostname ending with the suffix, strictly longer than the suffix
     /// (e.g., `"-aiplatform.googleapis.com"` matches `"us-central1-aiplatform.googleapis.com"`).
     Suffix(&'static str),
+    /// AWS Bedrock Runtime regional hosts: `bedrock-runtime.<region>.amazonaws.com`.
+    AwsBedrockRuntime,
 }
 
 /// A host pattern and its injection strategy for an app provider.
@@ -76,6 +78,11 @@ impl HostPattern {
         match self {
             Self::Exact(host) => *host == hostname,
             Self::Suffix(suffix) => hostname.ends_with(suffix) && hostname.len() > suffix.len(),
+            Self::AwsBedrockRuntime => {
+                hostname.starts_with("bedrock-runtime.")
+                    && hostname.ends_with(".amazonaws.com")
+                    && hostname.len() > "bedrock-runtime.x.amazonaws.com".len()
+            }
         }
     }
 }
@@ -238,6 +245,15 @@ static LINKEDIN_REFRESH: RefreshConfig = RefreshConfig {
     client_auth: ClientCredentialMethod::Body,
 };
 
+/// Refresh config for Airtable OAuth (Basic auth + rotating refresh tokens).
+static AIRTABLE_REFRESH: RefreshConfig = RefreshConfig {
+    token_url: "https://airtable.com/oauth2/v1/token",
+    client_id_env: "AIRTABLE_CLIENT_ID",
+    client_secret_env: "AIRTABLE_CLIENT_SECRET",
+    body_format: TokenBodyFormat::Form,
+    client_auth: ClientCredentialMethod::BasicAuth,
+};
+
 // ── Provider registry ──────────────────────────────────────────────────
 
 static APP_PROVIDERS: &[AppProvider] = &[
@@ -392,6 +408,27 @@ static APP_PROVIDERS: &[AppProvider] = &[
             HostRule {
                 pattern: HostPattern::Exact("www.googleapis.com"),
                 path_prefix: Some("/batch/drive/"),
+                strategy: AuthStrategy::Bearer,
+                intercept: false,
+                credential_host_field: None,
+            },
+            HostRule {
+                pattern: HostPattern::Exact("docs.googleapis.com"),
+                path_prefix: None,
+                strategy: AuthStrategy::Bearer,
+                intercept: false,
+                credential_host_field: None,
+            },
+            HostRule {
+                pattern: HostPattern::Exact("sheets.googleapis.com"),
+                path_prefix: None,
+                strategy: AuthStrategy::Bearer,
+                intercept: false,
+                credential_host_field: None,
+            },
+            HostRule {
+                pattern: HostPattern::Exact("slides.googleapis.com"),
+                path_prefix: None,
                 strategy: AuthStrategy::Bearer,
                 intercept: false,
                 credential_host_field: None,
@@ -777,6 +814,42 @@ static APP_PROVIDERS: &[AppProvider] = &[
             credential_host_field: None,
         }],
         refresh: Some(&TODOIST_REFRESH),
+        metadata_headers: &[],
+        credential_headers: &[],
+        credential_params: &[],
+        host_rewrite: None,
+        finalizer: None,
+        body_transform: None,
+    },
+    AppProvider {
+        provider: "bedrock",
+        display_name: "Amazon Bedrock",
+        host_rules: &[HostRule {
+            pattern: HostPattern::AwsBedrockRuntime,
+            path_prefix: None,
+            strategy: AuthStrategy::Bearer,
+            intercept: false,
+            credential_host_field: None,
+        }],
+        refresh: None,
+        metadata_headers: &[],
+        credential_headers: &[],
+        credential_params: &[],
+        host_rewrite: None,
+        finalizer: None,
+        body_transform: None,
+    },
+    AppProvider {
+        provider: "airtable",
+        display_name: "Airtable",
+        host_rules: &[HostRule {
+            pattern: HostPattern::Exact("api.airtable.com"),
+            path_prefix: None,
+            strategy: AuthStrategy::Bearer,
+            intercept: false,
+            credential_host_field: None,
+        }],
+        refresh: Some(&AIRTABLE_REFRESH),
         metadata_headers: &[],
         credential_headers: &[],
         credential_params: &[],
@@ -1392,6 +1465,9 @@ pub(crate) fn injection_surface_samples() -> Vec<(&'static str, String, String)>
             let host = match r.pattern {
                 HostPattern::Exact(h) => h.to_string(),
                 HostPattern::Suffix(s) => format!("probe{s}"),
+                HostPattern::AwsBedrockRuntime => {
+                    "bedrock-runtime.us-east-1.amazonaws.com".to_string()
+                }
             };
             let path = r
                 .path_prefix
@@ -1573,6 +1649,8 @@ pub(crate) async fn refresh_access_token(
             "grant_type": "refresh_token",
         })),
         (TokenBodyFormat::Form, ClientCredentialMethod::BasicAuth) => req.form(&[
+            // Airtable requires client_id in the body alongside Basic auth.
+            ("client_id", client_id.as_str()),
             ("refresh_token", refresh_token),
             ("grant_type", "refresh_token"),
         ]),
@@ -2130,18 +2208,15 @@ mod tests {
             providers_for_host("people.googleapis.com"),
             vec!["google-contacts"]
         );
-        assert_eq!(
-            providers_for_host("docs.googleapis.com"),
-            vec!["google-docs"]
-        );
-        assert_eq!(
-            providers_for_host("sheets.googleapis.com"),
-            vec!["google-sheets"]
-        );
-        assert_eq!(
-            providers_for_host("slides.googleapis.com"),
-            vec!["google-slides"]
-        );
+        let docs = providers_for_host("docs.googleapis.com");
+        assert!(docs.contains(&"google-drive"));
+        assert!(docs.contains(&"google-docs"));
+        let sheets = providers_for_host("sheets.googleapis.com");
+        assert!(sheets.contains(&"google-drive"));
+        assert!(sheets.contains(&"google-sheets"));
+        let slides = providers_for_host("slides.googleapis.com");
+        assert!(slides.contains(&"google-drive"));
+        assert!(slides.contains(&"google-slides"));
         assert_eq!(
             providers_for_host("tasks.googleapis.com"),
             vec!["google-tasks"]
@@ -2219,6 +2294,69 @@ mod tests {
     fn google_refresh_uses_form_body_format() {
         let config = refresh_config("gmail").expect("gmail should have refresh config");
         assert!(matches!(config.body_format, TokenBodyFormat::Form));
+    }
+
+    #[test]
+    fn google_drive_injects_on_docs_sheets_slides_hosts() {
+        for host in [
+            "docs.googleapis.com",
+            "sheets.googleapis.com",
+            "slides.googleapis.com",
+        ] {
+            let injections = build_app_injections("google-drive", host, "ya29.drive_test");
+            assert_eq!(
+                injections.len(),
+                1,
+                "google-drive on {host} should produce one injection"
+            );
+            assert_eq!(
+                injections[0],
+                Injection::SetHeader {
+                    name: "authorization".to_string(),
+                    value: "Bearer ya29.drive_test".to_string(),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn providers_for_airtable_host() {
+        assert_eq!(providers_for_host("api.airtable.com"), vec!["airtable"]);
+    }
+
+    #[test]
+    fn airtable_refresh_uses_basic_auth() {
+        let config = refresh_config("airtable").expect("airtable should have refresh config");
+        assert!(matches!(
+            config.client_auth,
+            ClientCredentialMethod::BasicAuth
+        ));
+    }
+
+    #[test]
+    fn providers_for_bedrock_runtime_host() {
+        let east = providers_for_host("bedrock-runtime.us-east-1.amazonaws.com");
+        assert!(east.contains(&"bedrock"));
+        let west = providers_for_host("bedrock-runtime.eu-west-1.amazonaws.com");
+        assert!(west.contains(&"bedrock"));
+    }
+
+    #[test]
+    fn bedrock_runtime_uses_bearer() {
+        let rules = build_app_injection_rules(
+            "bedrock",
+            "bedrock-runtime.us-west-2.amazonaws.com",
+            "br_aws_test_token",
+        );
+        assert_eq!(rules.len(), 1);
+        let (_, injections) = &rules[0];
+        assert_eq!(
+            injections[0],
+            Injection::SetHeader {
+                name: "authorization".to_string(),
+                value: "Bearer br_aws_test_token".to_string(),
+            }
+        );
     }
 
     #[test]
@@ -2957,7 +3095,7 @@ mod tests {
         assert_eq!(result, Some(("gmail", "Gmail")));
 
         let result = provider_for_host("sheets.googleapis.com");
-        assert_eq!(result, Some(("google-sheets", "Google Sheets")));
+        assert_eq!(result, Some(("google-drive", "Google Drive")));
     }
 
     /// Shared hosts must not mix `None` and `Some` path prefixes — that would
@@ -2970,7 +3108,7 @@ mod tests {
             for rule in provider.host_rules {
                 let host = match rule.pattern {
                     HostPattern::Exact(h) => h,
-                    HostPattern::Suffix(_) => continue, // suffix rules don't share hosts
+                    HostPattern::Suffix(_) | HostPattern::AwsBedrockRuntime => continue,
                 };
                 let entry = hosts.entry(host).or_default();
                 if rule.path_prefix.is_some() {

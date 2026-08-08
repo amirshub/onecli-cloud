@@ -11,11 +11,15 @@ import {
 import { buildCodexOAuthStub } from "../lib/codex-stubs";
 import { DEFAULT_AGENT_NAME, DEFAULT_AGENT_IDENTIFIER } from "../lib/constants";
 import { generateAccessToken } from "../services/agent-service";
-import { grantedSecretSelection } from "../services/policy-reflect/injection";
+import {
+  grantedSecretSelection,
+  grantedConnectionSelection,
+} from "../services/policy-reflect/injection";
 import { loadInjectionRules } from "../services/policy-simulate/load-rules";
 import { resolvePrincipalSet } from "../services/policy-simulate/principal-set";
 import { getCrypto } from "../providers";
 import { logger } from "../lib/logger";
+import { normalizeHassServerUrl } from "../lib/home-assistant-url";
 
 /**
  * A `where` selecting exactly the secrets this agent can be handed: the
@@ -59,6 +63,47 @@ export const injectableSecretWhere = async (
   // No grants → match nothing, never the pool.
   if (arms.length === 0) return { id: { in: [] } };
   return { AND: [pool, { OR: arms }] };
+};
+
+/** Find a connected app connection this agent may use (grant-filtered). */
+const findInjectableAppConnection = async (
+  agent: { id: string },
+  projectId: string,
+  organizationId: string,
+  provider: string,
+) => {
+  const [principals, orgRules, projectRules] = await Promise.all([
+    resolvePrincipalSet(projectId, organizationId),
+    loadInjectionRules({ scope: "organization", organizationId }, "published"),
+    loadInjectionRules({ scope: "project", projectId }, "published"),
+  ]);
+  const granted = grantedConnectionSelection(
+    [...orgRules, ...projectRules],
+    agent.id,
+    principals,
+  );
+
+  const arms: Prisma.AppConnectionWhereInput[] = [];
+  if (granted.ids.length > 0) {
+    arms.push({ id: { in: granted.ids }, provider });
+  }
+  if (granted.providers.has(provider)) {
+    arms.push({
+      provider,
+      OR: [{ projectId }, { organizationId, scope: "organization" }],
+    });
+  }
+  if (arms.length === 0) return null;
+
+  return db.appConnection.findFirst({
+    where: {
+      status: "connected",
+      provider,
+      OR: arms,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { credentials: true },
+  });
 };
 
 /**
@@ -222,10 +267,94 @@ export const containerConfigRoutes = () => {
 
       const meta = parseAnthropicMetadata(anthropicSecret?.metadata);
 
-      const authEnv: Record<string, string> =
-        meta?.authMode === "oauth"
-          ? { CLAUDE_CODE_OAUTH_TOKEN: "placeholder" }
-          : { ANTHROPIC_API_KEY: "placeholder" };
+      const [bedrockConnection, homeAssistantConnection] = await Promise.all([
+        findInjectableAppConnection(
+          agent,
+          projectId,
+          auth.organizationId,
+          "bedrock",
+        ),
+        findInjectableAppConnection(
+          agent,
+          projectId,
+          auth.organizationId,
+          "home-assistant",
+        ),
+      ]);
+
+      let hassEnv: Record<string, string> = {};
+      if (homeAssistantConnection?.credentials) {
+        try {
+          const rawHa = await getCrypto().decrypt(
+            homeAssistantConnection.credentials,
+          );
+          const haCreds = JSON.parse(rawHa) as Record<string, unknown>;
+          const hassToken =
+            typeof haCreds.access_token === "string"
+              ? haCreds.access_token.trim()
+              : "";
+          const serverRaw =
+            typeof haCreds.serverUrl === "string"
+              ? haCreds.serverUrl.trim()
+              : "";
+          if (hassToken && serverRaw) {
+            hassEnv = {
+              HASS_SERVER: normalizeHassServerUrl(serverRaw),
+              HASS_TOKEN: hassToken,
+            };
+          }
+        } catch {
+          // omit HASS_* if decrypt/parse fails
+        }
+      }
+
+      let authEnv: Record<string, string>;
+      if (bedrockConnection?.credentials) {
+        try {
+          const raw = await getCrypto().decrypt(bedrockConnection.credentials);
+          const creds = JSON.parse(raw) as Record<string, unknown>;
+          const region =
+            typeof creds.region === "string" ? creds.region.trim() : "";
+          const accessToken =
+            typeof creds.access_token === "string"
+              ? creds.access_token.trim()
+              : "";
+          if (region && accessToken) {
+            authEnv = {
+              CLAUDE_CODE_USE_BEDROCK: "1",
+              AWS_BEARER_TOKEN_BEDROCK: "placeholder",
+              AWS_REGION: region,
+            };
+            const sonnet = creds.anthropicDefaultSonnetModel;
+            if (typeof sonnet === "string" && sonnet.trim()) {
+              authEnv.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet.trim();
+            }
+            const opus = creds.anthropicDefaultOpusModel;
+            if (typeof opus === "string" && opus.trim()) {
+              authEnv.ANTHROPIC_DEFAULT_OPUS_MODEL = opus.trim();
+            }
+            const haiku = creds.anthropicDefaultHaikuModel;
+            if (typeof haiku === "string" && haiku.trim()) {
+              authEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku.trim();
+            }
+          } else {
+            authEnv =
+              meta?.authMode === "oauth"
+                ? { CLAUDE_CODE_OAUTH_TOKEN: "placeholder" }
+                : { ANTHROPIC_API_KEY: "placeholder" };
+          }
+        } catch {
+          authEnv =
+            meta?.authMode === "oauth"
+              ? { CLAUDE_CODE_OAUTH_TOKEN: "placeholder" }
+              : { ANTHROPIC_API_KEY: "placeholder" };
+        }
+      } else {
+        authEnv =
+          meta?.authMode === "oauth"
+            ? { CLAUDE_CODE_OAUTH_TOKEN: "placeholder" }
+            : { ANTHROPIC_API_KEY: "placeholder" };
+      }
 
       // Detect OpenAI auth mode for Codex container support.
       const openaiSecret = await findInjectableSecretOfType(
@@ -291,6 +420,7 @@ export const containerConfigRoutes = () => {
           GIT_HTTP_PROXY_AUTHMETHOD: "basic",
           ...authEnv,
           ...openaiEnv,
+          ...hassEnv,
         },
         caCertificate,
         caCertificateContainerPath: CA_CONTAINER_PATH,

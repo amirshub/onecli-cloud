@@ -5,6 +5,7 @@
 //! with a configurable TTL.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tracing::{debug, warn};
@@ -24,6 +25,19 @@ const CACHE_TTL_SECS: u64 = 60;
 pub(crate) const CONNECTION_ID_HEADER: &str = "x-onecli-connection-id";
 /// Header name for listing available connections (response).
 pub(crate) const CONNECTIONS_HEADER: &str = "x-onecli-connections";
+
+const HOME_ASSISTANT_PROVIDER: &str = "home-assistant";
+
+fn normalize_hostname(hostname: &str) -> String {
+    hostname.trim().trim_end_matches('.').to_lowercase()
+}
+
+/// Reads normalized `metadata.haHost` for Home Assistant connections (gateway matches request Host).
+fn home_assistant_ha_host(metadata: &Option<serde_json::Value>) -> Option<String> {
+    let meta = metadata.as_ref()?;
+    let h = meta.get("haHost").and_then(|v| v.as_str())?;
+    Some(normalize_hostname(h))
+}
 
 /// Which ORG/PROJECT credential pool a connecting agent draws from. Since
 /// attach-model step 7 the v2 selection IS the whole story for those tiers:
@@ -586,12 +600,10 @@ impl PolicyEngine {
         hostname: &str,
         selection: &db::InjectSelection,
     ) -> Result<Vec<db::AppConnectionRow>, ConnectError> {
-        let providers = apps::providers_for_host(hostname);
-        if providers.is_empty() {
-            debug!(host = %hostname, "app_connections: no provider for host");
-            return Ok(vec![]);
+        let static_providers = apps::providers_for_host(hostname);
+        if !static_providers.is_empty() {
+            debug!(host = %hostname, providers = ?static_providers, "app_connections: matched providers");
         }
-        debug!(host = %hostname, providers = ?providers, "app_connections: matched providers");
 
         let connections = match connection_pool(selection) {
             InjectionPool::RuleSelected => {
@@ -626,10 +638,29 @@ impl PolicyEngine {
             InjectionPool::Empty => Vec::new(),
         };
 
-        let matching: Vec<db::AppConnectionRow> = connections
-            .into_iter()
-            .filter(|c| providers.contains(&c.provider.as_str()))
-            .collect();
+        let nh = normalize_hostname(hostname);
+        let mut seen = HashSet::<String>::new();
+        let mut matching = Vec::new();
+
+        for c in &connections {
+            if static_providers.contains(&c.provider.as_str()) && seen.insert(c.id.clone()) {
+                matching.push(c.clone());
+            }
+        }
+
+        // Home Assistant: match by exact metadata.haHost (full FQDN per connection),
+        // no static TLD rule in APP_PROVIDERS.
+        for c in &connections {
+            if c.provider != HOME_ASSISTANT_PROVIDER {
+                continue;
+            }
+            if home_assistant_ha_host(&c.metadata).as_deref() != Some(nh.as_str()) {
+                continue;
+            }
+            if seen.insert(c.id.clone()) {
+                matching.push(c.clone());
+            }
+        }
 
         debug!(host = %hostname, count = matching.len(), "app_connections: deferred connections");
         Ok(matching)
@@ -1039,7 +1070,8 @@ impl PolicyEngine {
         cache: &dyn CacheStore,
     ) -> Option<(Vec<InjectionRule>, Option<String>, Option<i64>)> {
         let creds: Option<serde_json::Value> = serde_json::from_str(decrypted_json).ok();
-        let needs_token = apps::needs_access_token(&conn.provider);
+        let needs_token = apps::needs_access_token(&conn.provider)
+            || conn.provider == HOME_ASSISTANT_PROVIDER;
         let (token, expires_at) = if needs_token {
             self.resolve_access_token(
                 decrypted_json,
@@ -1053,14 +1085,25 @@ impl PolicyEngine {
             (String::new(), None)
         };
 
-        let mut rules: Vec<InjectionRule> =
+        let mut rules: Vec<InjectionRule> = if conn.provider == HOME_ASSISTANT_PROVIDER {
+            // No static host rules in APP_PROVIDERS; connection is already scoped
+            // to this Host via metadata.haHost.
+            vec![InjectionRule {
+                path_pattern: "*".to_string(),
+                injections: vec![Injection::SetHeader {
+                    name: "authorization".to_string(),
+                    value: format!("Bearer {token}"),
+                }],
+            }]
+        } else {
             apps::build_app_injection_rules(&conn.provider, hostname, &token)
                 .into_iter()
                 .map(|(path_pattern, injections)| InjectionRule {
                     path_pattern,
                     injections,
                 })
-                .collect();
+                .collect()
+        };
 
         // For credential-only providers (no auth rules), ensure at least one
         // catch-all rule exists so credential headers/params have somewhere to attach.
@@ -1186,9 +1229,12 @@ impl PolicyEngine {
 
         // Check 2: project or org has app connections for this host
         let providers = apps::providers_for_host(hostname);
-        if providers.is_empty() {
-            return false;
-        }
+        let nh = normalize_hostname(hostname);
+
+        let ha_match = |c: &db::AppConnectionRow| {
+            c.provider == HOME_ASSISTANT_PROVIDER
+                && home_assistant_ha_host(&c.metadata).as_deref() == Some(nh.as_str())
+        };
 
         let has_project_conns = match db::find_app_connections_by_project(
             &self.pool,
@@ -1196,9 +1242,13 @@ impl PolicyEngine {
         )
         .await
         {
-            Ok(conns) => conns
-                .iter()
-                .any(|c| providers.contains(&c.provider.as_str())),
+            Ok(conns) => {
+                let static_match = !providers.is_empty()
+                    && conns
+                        .iter()
+                        .any(|c| providers.contains(&c.provider.as_str()));
+                static_match || conns.iter().any(ha_match)
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "has_available_credentials: app connections query failed");
                 false
@@ -1209,9 +1259,13 @@ impl PolicyEngine {
         }
 
         match db::find_app_connections_by_org(&self.pool, &agent.organization_id).await {
-            Ok(conns) => conns
-                .iter()
-                .any(|c| providers.contains(&c.provider.as_str())),
+            Ok(conns) => {
+                let static_match = !providers.is_empty()
+                    && conns
+                        .iter()
+                        .any(|c| providers.contains(&c.provider.as_str()));
+                static_match || conns.iter().any(ha_match)
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "has_available_credentials: org app connections query failed");
                 false
@@ -1649,6 +1703,11 @@ fn narrow_connections_by_path<'a>(
 /// gate — they self-select via `path_pattern` at apply time. A missing
 /// request path is conservatively non-serving.
 fn provider_serves_request(provider: &str, hostname: &str, request_path: Option<&str>) -> bool {
+    // Home Assistant has no static APP_PROVIDERS host rule; matching is via
+    // metadata.haHost in resolve_app_connections.
+    if provider == HOME_ASSISTANT_PROVIDER {
+        return true;
+    }
     request_path
         .map(|p| apps::provider_matches_host_and_path(provider, hostname, p))
         .unwrap_or(false)
@@ -2886,5 +2945,22 @@ mod deferred_injection_tests {
             }
             _ => panic!("expected Rules"),
         }
+    }
+
+    #[test]
+    fn normalize_hostname_lowercase_trims_trailing_dot() {
+        assert_eq!(
+            super::normalize_hostname("Asm.example.Ts.net."),
+            "asm.example.ts.net"
+        );
+    }
+
+    #[test]
+    fn home_assistant_ha_host_normalizes_metadata() {
+        let m = Some(serde_json::json!({ "haHost": "Asm.arthub.example.ts.net." }));
+        assert_eq!(
+            super::home_assistant_ha_host(&m).as_deref(),
+            Some("asm.arthub.example.ts.net")
+        );
     }
 }

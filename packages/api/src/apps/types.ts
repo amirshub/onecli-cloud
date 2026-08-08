@@ -3,12 +3,17 @@ export interface OAuthBuildAuthUrlParams {
   redirectUri: string;
   scopes: string[];
   state: string;
+  /** Set when the app uses PKCE (e.g. Airtable). */
+  codeChallenge?: string;
+  codeChallengeMethod?: "S256";
 }
 
 export interface OAuthExchangeCodeParams {
   appCredentials: Record<string, string>;
   callbackParams: Record<string, string>;
   redirectUri: string;
+  /** PKCE verifier from the authorize step (server-held cookie). */
+  codeVerifier?: string;
 }
 
 export interface OAuthExchangeResult {
@@ -32,6 +37,12 @@ export interface OAuthPermission {
 export type ConnectionMethod =
   | {
       type: "oauth";
+      /**
+       * When true, authorize sets an HttpOnly PKCE cookie and passes
+       * `codeChallenge` / `codeChallengeMethod` into `buildAuthUrl`; callback
+       * supplies `codeVerifier` to `exchangeCode`.
+       */
+      requiresPkce?: boolean;
       defaultScopes?: string[];
       /** Human-friendly permission descriptions. No runtime reader since the
        *  app-page permissions panel was removed — kept as source data for the
