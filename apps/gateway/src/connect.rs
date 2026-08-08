@@ -1070,8 +1070,8 @@ impl PolicyEngine {
         cache: &dyn CacheStore,
     ) -> Option<(Vec<InjectionRule>, Option<String>, Option<i64>)> {
         let creds: Option<serde_json::Value> = serde_json::from_str(decrypted_json).ok();
-        let needs_token = apps::needs_access_token(&conn.provider)
-            || conn.provider == HOME_ASSISTANT_PROVIDER;
+        let needs_token =
+            apps::needs_access_token(&conn.provider) || conn.provider == HOME_ASSISTANT_PROVIDER;
         let (token, expires_at) = if needs_token {
             self.resolve_access_token(
                 decrypted_json,
