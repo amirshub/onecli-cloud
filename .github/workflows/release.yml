@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: release-please
         id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           release-type: node
           # Use the workflow GITHUB_TOKEN. Upstream uses ONECLI_OSS_RELEASE for a
