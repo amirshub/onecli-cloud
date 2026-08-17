@@ -1,3 +1,9 @@
+
+Tunnnel 10254:
+
+ssh -L 10254:127.0.0.1:10254 -L 10255:127.0.0.1:10255 user@10.1.40.2
+
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/onecli-logo-dark.gif">
   <source media="(prefers-color-scheme: light)" srcset="assets/onecli-logo-light.gif">
