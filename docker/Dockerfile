@@ -59,10 +59,14 @@ ENV APP_VERSION=${APP_VERSION}
 COPY --from=deps /app/ .
 COPY --from=pruner /app/out/full/ .
 RUN pnpm --filter @onecli/db generate
-# Dummy DATABASE_URL satisfies Prisma during static page generation
+# Dummy DATABASE_URL satisfies Prisma during static page generation.
+# Call the web package build directly (not root `pnpm build`, which wraps turbo
+# + dotenv) so a type error is the Next.js message instead of "command exited (1)".
+ENV CI=1
+ENV TURBO_UI=false
 RUN --mount=type=cache,target=/app/apps/web/.next/cache \
     DATABASE_URL="postgresql://build:build@localhost/build" \
-    pnpm build --filter=@onecli/web
+    pnpm --filter=@onecli/web run build
 
 # ──────────────────────────────────────────────
 # Stage 6: Production runner

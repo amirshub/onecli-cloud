@@ -176,9 +176,10 @@ export const listGoogleDriveFolders = async (
   let res = await driveList(accessToken);
   if (res.status === 401) {
     const refreshed = await refreshIfPossible();
-    if (refreshed && typeof creds.access_token === "string") {
-      accessToken = creds.access_token;
-      res = await driveList(accessToken);
+    const nextToken = creds.access_token;
+    if (refreshed && typeof nextToken === "string" && nextToken) {
+      accessToken = nextToken;
+      res = await driveList(nextToken);
     }
   }
 
