@@ -23,9 +23,18 @@ services:
 
   onecli:
     image: ${ONECLI_IMAGE:-onecli:local}
+    # Always build this checkout. Without this, a leftover ONECLI_IMAGE (or an
+    # old onecli:local tag from the official installer) is pulled/started and
+    # /v1/health keeps reporting that image's stamped version (e.g. 1.5.3).
+    pull_policy: build
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        # Inlined into Next (/v1/health) at build time and into the image ENV
+        # the gateway reads at runtime (/healthz). scripts/run-onecli.sh sets
+        # this to package.json version + git sha.
+        APP_VERSION: ${APP_VERSION:-}
     container_name: onecli
     restart: unless-stopped
     depends_on:
