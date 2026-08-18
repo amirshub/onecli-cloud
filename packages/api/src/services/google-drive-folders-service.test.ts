@@ -33,7 +33,10 @@ vi.mock("../apps/resolve-credentials", () => ({
   resolveAppCredentials: (...args: unknown[]) => resolveAppCredentials(...args),
 }));
 
-import { listGoogleDriveFolders } from "./google-drive-folders-service";
+import {
+  listGoogleDriveFolders,
+  lookupGoogleDriveFolders,
+} from "./google-drive-folders-service";
 
 const SCOPE = { projectId: "p1", organizationId: "o1" };
 
@@ -115,8 +118,63 @@ describe("listGoogleDriveFolders Drive API", () => {
     expect(folders).toEqual([
       { id: "fold-1", name: "Clients", parentId: "root" },
     ]);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("q=");
+    const listed = decodeURIComponent(
+      String(fetchMock.mock.calls[0]?.[0]).replaceAll("+", " "),
+    );
+    expect(listed).toContain("q=");
+    expect(listed).toContain("'root' in parents");
+    expect(listed).not.toContain("sharedWithMe");
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("lists Shared with me folders", async () => {
+    findFirst.mockResolvedValue(driveRow());
+    decrypt.mockResolvedValue(
+      JSON.stringify({
+        access_token: "ya29.live",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        files: [{ id: "shared-1", name: "Vendor docs" }],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const folders = await listGoogleDriveFolders(SCOPE, "c1", "shared");
+    expect(folders).toEqual([
+      { id: "shared-1", name: "Vendor docs", parentId: null },
+    ]);
+    expect(decodeURIComponent(String(fetchMock.mock.calls[0]?.[0]))).toContain(
+      "sharedWithMe=true",
+    );
+  });
+
+  it("lists children of a shared folder with all-drives flags", async () => {
+    findFirst.mockResolvedValue(driveRow());
+    decrypt.mockResolvedValue(
+      JSON.stringify({
+        access_token: "ya29.live",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ files: [{ id: "child-1", name: "Q1" }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listGoogleDriveFolders(SCOPE, "c1", "1abcSharedFolder");
+    const listed = decodeURIComponent(
+      String(fetchMock.mock.calls[0]?.[0]).replaceAll("+", " "),
+    );
+    expect(listed).toContain("supportsAllDrives=true");
+    expect(listed).toContain("includeItemsFromAllDrives=true");
+    expect(listed).toContain("'1abcSharedFolder' in parents");
   });
 
   it("refreshes an expired token before listing", async () => {
@@ -163,5 +221,44 @@ describe("listGoogleDriveFolders Drive API", () => {
     expect(driveCall?.[1]).toMatchObject({
       headers: { Authorization: "Bearer ya29.new" },
     });
+  });
+});
+
+describe("lookupGoogleDriveFolders", () => {
+  it("resolves saved folder IDs to names", async () => {
+    findFirst.mockResolvedValue(driveRow());
+    decrypt.mockResolvedValue(
+      JSON.stringify({
+        access_token: "ya29.live",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: "1axSYGgw8emrMctRUpOq8Tje",
+        name: "Client vault",
+        parents: ["root"],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const folders = await lookupGoogleDriveFolders(SCOPE, "c1", [
+      "1axSYGgw8emrMctRUpOq8Tje",
+    ]);
+    expect(folders).toEqual([
+      {
+        id: "1axSYGgw8emrMctRUpOq8Tje",
+        name: "Client vault",
+        parentId: "root",
+      },
+    ]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "/drive/v3/files/1axSYGgw8emrMctRUpOq8Tje",
+    );
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "supportsAllDrives=true",
+    );
   });
 });

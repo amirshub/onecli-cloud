@@ -11,6 +11,14 @@ import { scopeWhere, type ResourceScope } from "./resource-scope";
 const GOOGLE_DRIVE_PROVIDER = "google-drive";
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const TOKEN_SKEW_SECONDS = 60;
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+/** Virtual parent for the My Drive listing (`'root' in parents`). */
+export const GOOGLE_DRIVE_MY_DRIVE = "root";
+/** Virtual parent for folders others have shared with this account. */
+export const GOOGLE_DRIVE_SHARED_WITH_ME = "shared";
+
+const MAX_LOOKUP_IDS = 100;
 
 export interface GoogleDriveFolderRow {
   id: string;
@@ -60,13 +68,12 @@ const resolveGoogleOAuthClient = async (connection: {
   return null;
 };
 
-export const listGoogleDriveFolders = async (
+type DriveGet = (url: URL) => Promise<Response>;
+
+const openDriveSession = async (
   scope: ResourceScope,
   connectionId: string,
-  parentId?: string,
-): Promise<GoogleDriveFolderRow[]> => {
-  // `scopeWhere` (not `scopeOwnership`): the route passes project + org, and
-  // ownership-only lookup would miss project-scoped connections.
+): Promise<DriveGet> => {
   const connection = await db.appConnection.findFirst({
     where: {
       id: connectionId,
@@ -153,54 +160,69 @@ export const listGoogleDriveFolders = async (
     }
   }
 
-  let accessToken = creds.access_token;
-  if (typeof accessToken !== "string" || !accessToken) {
-    throw new ServiceError("BAD_REQUEST", "Connection has no access token");
-  }
-
-  const parentQuery =
-    parentId && parentId !== "root"
-      ? `'${escapeDriveQuery(parentId)}' in parents`
-      : "'root' in parents";
-
-  const q = `mimeType='application/vnd.google-apps.folder' and trashed=false and ${parentQuery}`;
-  const url = new URL(DRIVE_FILES_URL);
-  url.searchParams.set("q", q);
-  url.searchParams.set("fields", "files(id,name,parents)");
-  url.searchParams.set("orderBy", "name");
-  url.searchParams.set("pageSize", "100");
-
-  const driveList = async (token: string) =>
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-
-  let res = await driveList(accessToken);
-  if (res.status === 401) {
-    const refreshed = await refreshIfPossible();
-    const nextToken = creds.access_token;
-    if (refreshed && typeof nextToken === "string" && nextToken) {
-      accessToken = nextToken;
-      res = await driveList(nextToken);
+  const token = (): string => {
+    const accessToken = creds.access_token;
+    if (typeof accessToken !== "string" || !accessToken) {
+      throw new ServiceError("BAD_REQUEST", "Connection has no access token");
     }
-  }
-
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new ServiceError(
-        "BAD_REQUEST",
-        "Reconnect this Google Drive account to list folders.",
-      );
-    }
-    throw new ServiceError(
-      "BAD_REQUEST",
-      `Google Drive API returned ${res.status}`,
-    );
-  }
-
-  const data = (await res.json()) as {
-    files?: { id?: string; name?: string; parents?: string[] }[];
+    return accessToken;
   };
 
-  return (data.files ?? [])
+  return async (url: URL) => {
+    let res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    if (res.status === 401) {
+      const refreshed = await refreshIfPossible();
+      const nextToken = creds.access_token;
+      if (refreshed && typeof nextToken === "string" && nextToken) {
+        res = await fetch(url, {
+          headers: { Authorization: `Bearer ${nextToken}` },
+        });
+      }
+    }
+    return res;
+  };
+};
+
+const throwIfDriveFailed = (res: Response) => {
+  if (res.ok) return;
+  if (res.status === 401 || res.status === 403) {
+    throw new ServiceError(
+      "BAD_REQUEST",
+      "Reconnect this Google Drive account to list folders.",
+    );
+  }
+  throw new ServiceError(
+    "BAD_REQUEST",
+    `Google Drive API returned ${res.status}`,
+  );
+};
+
+const listUrl = (parentId?: string): URL => {
+  const location =
+    parentId && parentId.length > 0 ? parentId : GOOGLE_DRIVE_MY_DRIVE;
+  const url = new URL(DRIVE_FILES_URL);
+  let q = `mimeType='${FOLDER_MIME}' and trashed=false`;
+  if (location === GOOGLE_DRIVE_SHARED_WITH_ME) {
+    q += " and sharedWithMe=true";
+  } else if (location === GOOGLE_DRIVE_MY_DRIVE) {
+    q += " and 'root' in parents";
+  } else {
+    q += ` and '${escapeDriveQuery(location)}' in parents`;
+    url.searchParams.set("supportsAllDrives", "true");
+    url.searchParams.set("includeItemsFromAllDrives", "true");
+  }
+  url.searchParams.set("q", q);
+  url.searchParams.set("fields", "files(id,name,parents)");
+  url.searchParams.set("pageSize", "100");
+  return url;
+};
+
+const mapFiles = (
+  files: { id?: string; name?: string; parents?: string[] }[],
+): GoogleDriveFolderRow[] =>
+  files
     .filter(
       (f): f is { id: string; name: string; parents?: string[] } =>
         typeof f.id === "string" && typeof f.name === "string",
@@ -209,5 +231,58 @@ export const listGoogleDriveFolders = async (
       id: f.id,
       name: f.name,
       parentId: f.parents?.[0] ?? null,
-    }));
+    }))
+    .toSorted((a, b) => a.name.localeCompare(b.name));
+
+export const listGoogleDriveFolders = async (
+  scope: ResourceScope,
+  connectionId: string,
+  parentId?: string,
+): Promise<GoogleDriveFolderRow[]> => {
+  const driveGet = await openDriveSession(scope, connectionId);
+  const res = await driveGet(listUrl(parentId));
+  throwIfDriveFailed(res);
+  const data = (await res.json()) as {
+    files?: { id?: string; name?: string; parents?: string[] }[];
+  };
+  return mapFiles(data.files ?? []);
+};
+
+/** Resolve folder IDs to names (selected chips persist IDs only). */
+export const lookupGoogleDriveFolders = async (
+  scope: ResourceScope,
+  connectionId: string,
+  ids: string[],
+): Promise<GoogleDriveFolderRow[]> => {
+  const unique = [...new Set(ids.filter((id) => id.length > 0))].slice(
+    0,
+    MAX_LOOKUP_IDS,
+  );
+  if (unique.length === 0) return [];
+
+  const driveGet = await openDriveSession(scope, connectionId);
+  const rows = await Promise.all(
+    unique.map(async (id) => {
+      const url = new URL(`${DRIVE_FILES_URL}/${encodeURIComponent(id)}`);
+      url.searchParams.set("fields", "id,name,parents");
+      url.searchParams.set("supportsAllDrives", "true");
+      const res = await driveGet(url);
+      if (res.status === 404) return null;
+      throwIfDriveFailed(res);
+      const file = (await res.json()) as {
+        id?: string;
+        name?: string;
+        parents?: string[];
+      };
+      if (typeof file.id !== "string" || typeof file.name !== "string") {
+        return null;
+      }
+      return {
+        id: file.id,
+        name: file.name,
+        parentId: file.parents?.[0] ?? null,
+      };
+    }),
+  );
+  return rows.filter((row): row is GoogleDriveFolderRow => row !== null);
 };

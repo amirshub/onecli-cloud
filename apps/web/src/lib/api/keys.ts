@@ -150,6 +150,13 @@ export const queryKeys = {
         connectionId,
         parentId,
       ] as const,
+    namedFolders: (connectionId: string, idsKey: string) =>
+      [
+        ...queryKeys.googleDrive.all(),
+        "namedFolders",
+        connectionId,
+        idsKey,
+      ] as const,
   },
   onepassword: {
     all: () => ["onepassword", ...scope()] as const,

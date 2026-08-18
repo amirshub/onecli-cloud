@@ -70,7 +70,10 @@ import {
   removeBlocklistRule,
 } from "../services/app-blocklist-service";
 import { logger } from "../lib/logger";
-import { listGoogleDriveFolders } from "../services/google-drive-folders-service";
+import {
+  listGoogleDriveFolders,
+  lookupGoogleDriveFolders,
+} from "../services/google-drive-folders-service";
 
 const docsBaseURL = "https://onecli.sh/docs/guides/credential-stubs";
 
@@ -867,14 +870,18 @@ export const appRoutes = () => {
     if (!connectionId) {
       return c.json({ error: "connectionId is required" }, 400);
     }
-    const folders = await listGoogleDriveFolders(
-      {
-        projectId: requireProjectId(auth),
-        organizationId: auth.organizationId,
-      },
-      connectionId,
-      parentId,
-    );
+    const idsParam = c.req.query("ids");
+    const scope = {
+      projectId: requireProjectId(auth),
+      organizationId: auth.organizationId,
+    };
+    const folders = idsParam
+      ? await lookupGoogleDriveFolders(
+          scope,
+          connectionId,
+          idsParam.split(",").map((id) => id.trim()),
+        )
+      : await listGoogleDriveFolders(scope, connectionId, parentId);
     return c.json(folders);
   });
 
