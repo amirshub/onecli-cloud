@@ -47,7 +47,7 @@ export const GoogleDriveFolderScope = ({
   );
   const parentId = trail[trail.length - 1]?.id ?? MY_DRIVE.id;
   const atRoot = trail.length === 1;
-  const selectedKey = selectedIds.toSorted().join(",");
+  const selectedKey = [...selectedIds].sort().join(",");
 
   const listing = useQuery({
     queryKey: queryKeys.googleDrive.folders(connection.id, parentId),

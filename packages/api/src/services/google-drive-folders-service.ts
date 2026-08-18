@@ -232,7 +232,7 @@ const mapFiles = (
       name: f.name,
       parentId: f.parents?.[0] ?? null,
     }))
-    .toSorted((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name));
 
 export const listGoogleDriveFolders = async (
   scope: ResourceScope,
