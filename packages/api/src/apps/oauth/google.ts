@@ -116,6 +116,56 @@ export const exchangeGoogleCode = async ({
   return { credentials, scopes, metadata };
 };
 
+/** Refresh a Google access token. The stored refresh_token is reused when Google
+ * does not rotate it. */
+export const refreshGoogleAccessToken = async (
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+}> => {
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!tokenRes.ok) {
+    const errorBody = await tokenRes.text();
+    throw new Error(
+      `Google token refresh failed: ${tokenRes.status} ${tokenRes.statusText} — ${errorBody}`,
+    );
+  }
+
+  const tokenData = (await tokenRes.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (tokenData.error || !tokenData.access_token) {
+    throw new Error(
+      tokenData.error_description ?? "Failed to refresh Google access token",
+    );
+  }
+
+  return {
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token ?? refreshToken,
+    expires_at: Math.floor(Date.now() / 1000) + (tokenData.expires_in ?? 3600),
+  };
+};
+
 /** Standard BYOC config fields for Google OAuth apps. */
 export const googleConfigFields: OAuthConfigField[] = [
   {

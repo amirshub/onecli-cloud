@@ -142,8 +142,9 @@ export const GoogleDriveFolderScope = ({
               </div>
             ) : listing.isError ? (
               <p className="text-destructive px-3 py-3 text-xs">
-                Couldn&apos;t load folders. Confirm the connection is active
-                and has Drive access.
+                {listing.error instanceof Error
+                  ? listing.error.message
+                  : "Couldn't load folders. Confirm the connection is active and has Drive access."}
               </p>
             ) : (listing.data ?? []).length === 0 ? (
               <p className="text-muted-foreground px-3 py-3 text-xs">
