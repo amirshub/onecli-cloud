@@ -2598,9 +2598,9 @@ mod stamp_resource_scopes_tests {
         );
     }
 
-    /// OSS enforces no resource boundaries — it has no guard that could — so
-    /// the seam leaves a selection untouched even if one were planted. Pinned
-    /// so the composition can never leak into an edition that cannot honour it.
+    /// OSS does not compose org-level resource boundaries (GitHub/Dropbox).
+    /// A planted selection is left untouched; `driveFolders` is attached in
+    /// inject-select and copied through this same seam.
     #[cfg(edition_oss)]
     #[test]
     fn oss_leaves_the_selection_untouched() {
@@ -2686,6 +2686,9 @@ mod deferred_injection_tests {
         assert!(granular_scoping_requested(Some(&serde_json::json!({
             "repositories": ["org/a"]
         }))));
+        assert!(granular_scoping_requested(Some(&serde_json::json!({
+            "driveFolders": ["folder-id-1"]
+        }))));
         // Absent, null, empty object, or behavioral conditions: no scoped mint.
         assert!(!granular_scoping_requested(None));
         assert!(!granular_scoping_requested(Some(&serde_json::json!(null))));
@@ -2734,9 +2737,8 @@ mod deferred_injection_tests {
         }
     }
 
-    /// OSS never defers — it has no token scoper, so a session policy on a
-    /// connection (only plantable by hand there) changes nothing about WHEN the
-    /// credential resolves. Pinned so the deferral can never leak into OSS.
+    /// OSS never defers GitHub — it has no token scoper. Google Drive folder
+    /// scope is enforced per request, so that credential still resolves eagerly.
     #[cfg(edition_oss)]
     #[tokio::test]
     async fn oss_never_defers_a_credential() {
@@ -2769,6 +2771,61 @@ mod deferred_injection_tests {
             // eager path may resolve to nothing at all — equally undeferred.
             AppConnectionResult::NoConnections => {}
             _ => panic!("expected Rules or NoConnections"),
+        }
+    }
+
+    /// A REQUEST-LEVEL provider (ASHUB Google Drive folder guard) keeps its
+    /// plain stored credential under `driveFolders`: the guard restricts each
+    /// call. Withholding the token would break folder limiting on OSS.
+    #[cfg(edition_oss)]
+    #[tokio::test]
+    async fn google_drive_keeps_credential_under_folder_scope() {
+        let engine = PolicyEngine::test_stub();
+        let cache = store().await;
+        let creds = engine
+            .crypto
+            .encrypt(&serde_json::json!({ "access_token": "ya29.drive" }).to_string())
+            .await
+            .expect("encrypt");
+        let conn = db::AppConnectionRow {
+            id: "c-drive".into(),
+            provider: "google-drive".into(),
+            scope: "project".into(),
+            credentials: Some(creds),
+            label: Some("drive".into()),
+            metadata: None,
+            session_policy: Some(serde_json::json!({ "driveFolders": ["folder-1"] })),
+        };
+
+        let result = engine
+            .resolve_app_injection_for_request(
+                std::slice::from_ref(&conn),
+                "www.googleapis.com",
+                Some("/drive/v3/files/abc"),
+                None,
+                "org-1",
+                "proj-1",
+                &*cache,
+            )
+            .await
+            .expect("resolution");
+
+        match result {
+            AppConnectionResult::Rules {
+                rules,
+                pending,
+                session_policy,
+                ..
+            } => {
+                assert!(pending.is_empty(), "no token scoper, nothing to defer");
+                assert!(!rules.is_empty(), "the stored Drive token still injects");
+                assert_eq!(
+                    session_policy,
+                    Some(serde_json::json!({ "driveFolders": ["folder-1"] })),
+                    "the guard needs the policy to enforce against"
+                );
+            }
+            _ => panic!("expected Rules — withholding here would break Drive folder scoping"),
         }
     }
 

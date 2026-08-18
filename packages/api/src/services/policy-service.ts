@@ -561,8 +561,8 @@ export const assertTargetsValid = async (
  * with a connection target — then runs the wired policy validator per
  * connection target. EE deep-checks the shape against the provider (repos
  * exist on the installation, absolute Dropbox paths) and gates the team+
- * entitlement; OSS wires a validator that REJECTS session policies outright
- * (granular scoping is a OneCLI Cloud capability — step 9.5). A no-op for
+ * entitlement; OSS allows google-drive `driveFolders` (enforced in the OSS
+ * gateway) and rejects GitHub/Dropbox scoping (step 9.5). A no-op for
  * behavioral / absent conditions. Same org fence as `assertTargetsValid`.
  *
  * Callers pass the MERGED (post-update) action/targets/conditions, so no PATCH

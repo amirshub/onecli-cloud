@@ -226,6 +226,11 @@ const normalizeResources = (
       ? null
       : { repositories: [...resources.repositories].sort() };
   }
+  if ("driveFolders" in resources) {
+    return resources.driveFolders.length === 0
+      ? null
+      : { driveFolders: [...resources.driveFolders].sort() };
+  }
   return resources.folders.length === 0
     ? null
     : { folders: [...resources.folders].sort() };
@@ -471,9 +476,9 @@ export const setConnectionGrant = async (
     const resources = normalizeResources(input.resources);
     if (resources !== null) {
       // An explicit SET runs the edition's validator: EE deep-checks the shape
-      // against the provider and team-gates the entitlement; OSS rejects every
-      // session policy with its 422 lock. Clearing and preserving are never
-      // gated — removing a restriction must not require an entitlement.
+      // against the provider and team-gates the entitlement; OSS allows
+      // google-drive `driveFolders` (enforced in the OSS gateway) and rejects
+      // GitHub/Dropbox scoping. Clearing and preserving are never gated.
       await getPolicyValidator().validate(
         scope.organizationId,
         connection.provider,

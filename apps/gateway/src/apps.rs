@@ -389,7 +389,7 @@ static APP_PROVIDERS: &[AppProvider] = &[
     },
     AppProvider {
         provider: "google-drive",
-        display_name: "Google Drive",
+        display_name: "ASHUB Google Drive",
         host_rules: &[
             HostRule {
                 pattern: HostPattern::Exact("www.googleapis.com"),
@@ -447,60 +447,6 @@ static APP_PROVIDERS: &[AppProvider] = &[
         display_name: "Google Contacts",
         host_rules: &[HostRule {
             pattern: HostPattern::Exact("people.googleapis.com"),
-            path_prefix: None,
-            strategy: AuthStrategy::Bearer,
-            intercept: false,
-            credential_host_field: None,
-        }],
-        refresh: Some(&GOOGLE_REFRESH),
-        metadata_headers: &[],
-        credential_headers: &[],
-        credential_params: &[],
-        host_rewrite: None,
-        finalizer: None,
-        body_transform: None,
-    },
-    AppProvider {
-        provider: "google-docs",
-        display_name: "Google Docs",
-        host_rules: &[HostRule {
-            pattern: HostPattern::Exact("docs.googleapis.com"),
-            path_prefix: None,
-            strategy: AuthStrategy::Bearer,
-            intercept: false,
-            credential_host_field: None,
-        }],
-        refresh: Some(&GOOGLE_REFRESH),
-        metadata_headers: &[],
-        credential_headers: &[],
-        credential_params: &[],
-        host_rewrite: None,
-        finalizer: None,
-        body_transform: None,
-    },
-    AppProvider {
-        provider: "google-sheets",
-        display_name: "Google Sheets",
-        host_rules: &[HostRule {
-            pattern: HostPattern::Exact("sheets.googleapis.com"),
-            path_prefix: None,
-            strategy: AuthStrategy::Bearer,
-            intercept: false,
-            credential_host_field: None,
-        }],
-        refresh: Some(&GOOGLE_REFRESH),
-        metadata_headers: &[],
-        credential_headers: &[],
-        credential_params: &[],
-        host_rewrite: None,
-        finalizer: None,
-        body_transform: None,
-    },
-    AppProvider {
-        provider: "google-slides",
-        display_name: "Google Slides",
-        host_rules: &[HostRule {
-            pattern: HostPattern::Exact("slides.googleapis.com"),
             path_prefix: None,
             strategy: AuthStrategy::Bearer,
             intercept: false,
@@ -2209,14 +2155,11 @@ mod tests {
             vec!["google-contacts"]
         );
         let docs = providers_for_host("docs.googleapis.com");
-        assert!(docs.contains(&"google-drive"));
-        assert!(docs.contains(&"google-docs"));
+        assert_eq!(docs, vec!["google-drive"]);
         let sheets = providers_for_host("sheets.googleapis.com");
-        assert!(sheets.contains(&"google-drive"));
-        assert!(sheets.contains(&"google-sheets"));
+        assert_eq!(sheets, vec!["google-drive"]);
         let slides = providers_for_host("slides.googleapis.com");
-        assert!(slides.contains(&"google-drive"));
-        assert!(slides.contains(&"google-slides"));
+        assert_eq!(slides, vec!["google-drive"]);
         assert_eq!(
             providers_for_host("tasks.googleapis.com"),
             vec!["google-tasks"]
@@ -2363,9 +2306,9 @@ mod tests {
     fn google_workspace_apps_use_bearer() {
         let hosts = [
             ("google-contacts", "people.googleapis.com"),
-            ("google-docs", "docs.googleapis.com"),
-            ("google-sheets", "sheets.googleapis.com"),
-            ("google-slides", "slides.googleapis.com"),
+            ("google-drive", "docs.googleapis.com"),
+            ("google-drive", "sheets.googleapis.com"),
+            ("google-drive", "slides.googleapis.com"),
             ("google-tasks", "tasks.googleapis.com"),
             ("google-forms", "forms.googleapis.com"),
             ("google-classroom", "classroom.googleapis.com"),
@@ -2885,7 +2828,7 @@ mod tests {
         assert_eq!(result, Some(("gmail", "Gmail")));
 
         let result = provider_for_host_and_path("www.googleapis.com", "/drive/v3/files");
-        assert_eq!(result, Some(("google-drive", "Google Drive")));
+        assert_eq!(result, Some(("google-drive", "ASHUB Google Drive")));
     }
 
     #[test]
@@ -2897,7 +2840,7 @@ mod tests {
         assert_eq!(result, Some(("gmail", "Gmail")));
 
         let result = provider_for_host_and_path("www.googleapis.com", "/batch/drive/v3");
-        assert_eq!(result, Some(("google-drive", "Google Drive")));
+        assert_eq!(result, Some(("google-drive", "ASHUB Google Drive")));
 
         let result = provider_for_host_and_path("www.googleapis.com", "/batch/youtube/v3");
         assert_eq!(result, Some(("youtube", "YouTube")));
@@ -3095,7 +3038,7 @@ mod tests {
         assert_eq!(result, Some(("gmail", "Gmail")));
 
         let result = provider_for_host("sheets.googleapis.com");
-        assert_eq!(result, Some(("google-drive", "Google Drive")));
+        assert_eq!(result, Some(("google-drive", "ASHUB Google Drive")));
     }
 
     /// Shared hosts must not mix `None` and `Some` path prefixes — that would

@@ -8,7 +8,7 @@ import type { PolicyTargetInput } from "../validations/policy";
 // shared EE-stub list (aws-role, datadog, …) present with `available: false`.
 
 describe("ossPolicyValidator.validate (granular session policy)", () => {
-  it("rejects unconditionally with the cloud-only message", async () => {
+  it("rejects GitHub repositories with the cloud-only message", async () => {
     await expect(
       ossPolicyValidator.validate("org-1", "github", null, {
         repositories: ["a/b"],
@@ -18,6 +18,30 @@ describe("ossPolicyValidator.validate (granular session policy)", () => {
       message:
         "Granular resource scoping (repositories/folders) is available on OneCLI Cloud.",
     });
+  });
+
+  it("rejects Dropbox folders with the cloud-only message", async () => {
+    await expect(
+      ossPolicyValidator.validate("org-1", "dropbox", null, {
+        folders: ["/clients"],
+      }),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE" });
+  });
+
+  it("accepts google-drive driveFolders", async () => {
+    await expect(
+      ossPolicyValidator.validate("org-1", "google-drive", null, {
+        driveFolders: ["1BxiMVs0XRA5nFMdKvBdBZjlvNq5fjY7n"],
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects driveFolders on a non-Drive provider", async () => {
+    await expect(
+      ossPolicyValidator.validate("org-1", "github-app", null, {
+        driveFolders: ["folder-1"],
+      }),
+    ).rejects.toMatchObject({ code: "UNPROCESSABLE" });
   });
 });
 

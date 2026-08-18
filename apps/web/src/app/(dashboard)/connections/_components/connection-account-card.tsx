@@ -50,6 +50,7 @@ import {
 } from "@/hooks/use-connections";
 import type { PageScope } from "@/lib/api";
 import { extractLabel } from "@onecli/api/services/connection-service";
+import { googleDriveNeedsReconnect } from "@onecli/api/apps/google-drive-scopes";
 // The read-only agent-access reflection, which reads the v2 policy engine.
 // Shared since step 10 — every edition renders it.
 import { ConnectionAgentsReflection } from "@/lib/components/policy-reflect";
@@ -63,6 +64,7 @@ interface ConnectionAccountCardProps {
     metadata: Record<string, unknown> | null;
     connectedAt: string;
   };
+  provider: string;
   appName: string;
   onReconnect: (connectionId: string) => void;
   pageScope?: PageScope;
@@ -70,6 +72,7 @@ interface ConnectionAccountCardProps {
 
 export const ConnectionAccountCard = ({
   connection,
+  provider,
   appName,
   onReconnect,
   pageScope = "project",
@@ -92,6 +95,7 @@ export const ConnectionAccountCard = ({
   const avatarUrl = connection.metadata?.avatarUrl as string | undefined;
   const accountType = connection.metadata?.accountType as string | undefined;
   const tags = (connection.metadata?.tags as string[] | undefined) ?? [];
+  const needsReconnect = googleDriveNeedsReconnect(provider, connection.scopes);
 
   const handleRename = () => {
     const trimmed = renameValue.trim();
@@ -232,6 +236,19 @@ export const ConnectionAccountCard = ({
               className="size-3 shrink-0 opacity-60"
               aria-hidden="true"
             />
+          </button>
+        )}
+
+        {needsReconnect && (
+          <button
+            type="button"
+            onClick={() => onReconnect(connection.id)}
+            className="flex min-w-0 items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <RefreshCw className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              Reconnect to enable Docs, Sheets, and Slides
+            </span>
           </button>
         )}
 

@@ -9,13 +9,26 @@ import { ServiceError } from "./errors";
 import type { PolicyValidator } from "../providers";
 import { getApp } from "../apps/registry";
 
+const isDriveFoldersPolicy = (
+  provider: string,
+  policy: Record<string, unknown>,
+): boolean => {
+  if (provider !== "google-drive") return false;
+  const keys = Object.keys(policy);
+  if (keys.length !== 1 || keys[0] !== "driveFolders") return false;
+  const folders = policy.driveFolders;
+  return (
+    Array.isArray(folders) &&
+    folders.every((f) => typeof f === "string" && f.length > 0)
+  );
+};
+
 /**
- * OSS rejects granular resource scoping outright. One seam covers both storage
- * paths: `assertSessionPolicyValid` (policy-rule create/update/publish) and
- * the legacy equipment `sessionPolicy` write both call
- * `getPolicyValidator().validate(...)`. Without this lock OSS would
- * accept-and-store `{repositories}`/`{folders}` that its gateway never
- * enforces — false security, worse than absence.
+ * OSS rejects GitHub/Dropbox granular scoping (no request/token guard in this
+ * edition). `google-drive` `driveFolders` is allowed: the OSS gateway enforces
+ * it per request. One seam covers both storage paths: `assertSessionPolicyValid`
+ * (policy-rule create/update/publish) and the legacy equipment `sessionPolicy`
+ * write both call `getPolicyValidator().validate(...)`.
  *
  * `validateTargets` (create/update only) rejects app targets naming a
  * cloud-only provider — the registry's EE stubs (`available: false`), which
@@ -28,7 +41,8 @@ import { getApp } from "../apps/registry";
  * accepted (today's behavior).
  */
 export const ossPolicyValidator: PolicyValidator = {
-  validate: async () => {
+  validate: async (_organizationId, provider, _metadata, policy) => {
+    if (isDriveFoldersPolicy(provider, policy)) return;
     throw new ServiceError(
       "UNPROCESSABLE",
       "Granular resource scoping (repositories/folders) is available on OneCLI Cloud.",

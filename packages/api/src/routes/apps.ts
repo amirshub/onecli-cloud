@@ -70,6 +70,7 @@ import {
   removeBlocklistRule,
 } from "../services/app-blocklist-service";
 import { logger } from "../lib/logger";
+import { listGoogleDriveFolders } from "../services/google-drive-folders-service";
 
 const docsBaseURL = "https://onecli.sh/docs/guides/credential-stubs";
 
@@ -856,6 +857,25 @@ export const appRoutes = () => {
     return c.json(
       created ? { success: true, connection: created } : { success: true },
     );
+  });
+
+  // ── GET /apps/google-drive/folders ── browse Drive folders for scoping ──
+  app.get("/google-drive/folders", authMiddleware, async (c) => {
+    const auth = c.get("auth");
+    const connectionId = c.req.query("connectionId");
+    const parentId = c.req.query("parentId") ?? undefined;
+    if (!connectionId) {
+      return c.json({ error: "connectionId is required" }, 400);
+    }
+    const folders = await listGoogleDriveFolders(
+      {
+        projectId: requireProjectId(auth),
+        organizationId: auth.organizationId,
+      },
+      connectionId,
+      parentId,
+    );
+    return c.json(folders);
   });
 
   // ── GET /apps/:provider/permission-definition ── tool catalog ──────────

@@ -1,4 +1,25 @@
 import type { AppPermissionDefinition } from "./types";
+import { googleDocsPermissions } from "./google-docs";
+import { googleSheetsPermissions } from "./google-sheets";
+import { googleSlidesPermissions } from "./google-slides";
+
+const docsReadTools =
+  googleDocsPermissions.groups.find((g) => g.category === "read")?.tools ?? [];
+const docsWriteTools =
+  googleDocsPermissions.groups.find((g) => g.category === "write")?.tools ??
+  [];
+const sheetsReadTools =
+  googleSheetsPermissions.groups.find((g) => g.category === "read")?.tools ??
+  [];
+const sheetsWriteTools =
+  googleSheetsPermissions.groups.find((g) => g.category === "write")?.tools ??
+  [];
+const slidesReadTools =
+  googleSlidesPermissions.groups.find((g) => g.category === "read")?.tools ??
+  [];
+const slidesWriteTools =
+  googleSlidesPermissions.groups.find((g) => g.category === "write")?.tools ??
+  [];
 
 export const googleDrivePermissions: AppPermissionDefinition = {
   provider: "google-drive",
@@ -38,17 +59,20 @@ export const googleDrivePermissions: AppPermissionDefinition = {
           pathPattern: "/drive/v3/files",
           method: "GET",
         },
+        ...docsReadTools,
+        ...sheetsReadTools,
+        ...slidesReadTools,
       ],
     },
     {
       category: "write",
       wildcard: {
         id: "write_all",
-        name: "All write operations",
-        description: "Create, update, delete, and share files in Google Drive",
+        name: "All Drive write operations",
+        description:
+          "Create, update, delete, and share files on www.googleapis.com/drive",
         hostPattern: "www.googleapis.com",
         pathPattern: "/drive/v3/*",
-        // Uploads (create/update with media) go through the /upload/ host path.
         aliasPatterns: ["/upload/drive/v3/*"],
         methods: ["POST", "PUT", "PATCH", "DELETE"],
       },
@@ -88,6 +112,10 @@ export const googleDrivePermissions: AppPermissionDefinition = {
           method: "POST",
         },
       ],
+    },
+    {
+      category: "write",
+      tools: [...docsWriteTools, ...sheetsWriteTools, ...slidesWriteTools],
     },
   ],
 };

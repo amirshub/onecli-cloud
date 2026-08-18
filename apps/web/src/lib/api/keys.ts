@@ -141,6 +141,16 @@ export const queryKeys = {
     folders: (connectionId: string, path: string) =>
       [...queryKeys.dropbox.all(), "folders", connectionId, path] as const,
   },
+  googleDrive: {
+    all: () => ["googleDrive", ...scope()] as const,
+    folders: (connectionId: string, parentId: string) =>
+      [
+        ...queryKeys.googleDrive.all(),
+        "folders",
+        connectionId,
+        parentId,
+      ] as const,
+  },
   onepassword: {
     all: () => ["onepassword", ...scope()] as const,
     status: () => [...queryKeys.onepassword.all(), "status"] as const,

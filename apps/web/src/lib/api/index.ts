@@ -19,6 +19,7 @@ import * as appAvailability from "./app-availability";
 import * as appPermissions from "./app-permissions";
 import * as vaults from "./vaults";
 import * as dropbox from "./dropbox";
+import * as googleDrive from "./google-drive";
 
 export {
   agents,
@@ -42,6 +43,7 @@ export {
   appPermissions,
   vaults,
   dropbox,
+  googleDrive,
 };
 export type {
   Agent,

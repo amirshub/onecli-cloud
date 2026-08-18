@@ -28,6 +28,9 @@ mod approval;
 mod apps;
 
 #[cfg(edition_oss)]
+mod drive_folder_guard;
+
+#[cfg(edition_oss)]
 mod ee_apps;
 
 #[cfg(not(edition_oss))]

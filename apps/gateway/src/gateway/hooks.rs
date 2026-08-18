@@ -1,7 +1,7 @@
 //! Forward hooks — extension points for the request forwarding pipeline.
 //!
-//! OSS version: all hooks are no-ops. The cloud build swaps this module
-//! via `#[path = "ee/hooks.rs"]` to add cloud-specific telemetry.
+//! OSS version: Google Drive `driveFolders` request guard; other hooks are
+//! no-ops. The cloud build swaps this module via `#[path = "ee/hooks.rs"]`.
 
 use std::pin::Pin;
 
@@ -54,42 +54,56 @@ pub(crate) fn prepare_request(
 }
 
 /// Whether the request guard needs the buffered request body to make a
-/// decision. OSS has no request guard → never buffer.
+/// decision. Drive creates/updates name `parents` in JSON.
 pub(crate) fn needs_request_body(
-    _rules: &ResolvedRules,
-    _host: &str,
-    _method: &str,
-    _path: &str,
+    rules: &ResolvedRules,
+    host: &str,
+    method: &str,
+    path: &str,
 ) -> bool {
-    false
+    let Some(folders) = crate::drive_folder_guard::drive_folders(rules.session_policy.as_ref())
+    else {
+        return false;
+    };
+    !folders.is_empty() && crate::drive_folder_guard::needs_body(host, method, path)
 }
 
 /// Refuse a request whose resource scope allows nothing, before any credential
-/// is materialized or served. OSS stores no resource scopes → always allowed.
+/// is materialized or served.
 pub(crate) fn refuse_empty_scope(
-    _rules: &ResolvedRules,
+    rules: &ResolvedRules,
     _proxy_ctx: &ProxyContext,
     _host: &str,
     _method: &str,
     _path: &str,
 ) -> Option<Response<ForwardResponseBody>> {
-    None
+    if crate::ee_apps::scope_reaches_nothing(rules.session_policy.as_ref()) {
+        Some(crate::drive_folder_guard::forbidden(
+            "This Google Drive connection is limited to no folders.",
+        ))
+    } else {
+        None
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn pre_forward(
-    _rules: &ResolvedRules,
+    rules: &ResolvedRules,
     _proxy_ctx: &ProxyContext,
-    _host: &str,
+    host: &str,
     _cache: &dyn crate::cache::CacheStore,
     _pool: &sqlx::PgPool,
     _injection_count: usize,
-    _method: &str,
-    _path: &str,
-    _headers: &hyper::HeaderMap,
-    _body: Option<&[u8]>,
+    method: &str,
+    path: &str,
+    headers: &hyper::HeaderMap,
+    body: Option<&[u8]>,
 ) -> Option<Response<ForwardResponseBody>> {
-    None
+    let Some(folders) = crate::drive_folder_guard::drive_folders(rules.session_policy.as_ref())
+    else {
+        return None;
+    };
+    crate::drive_folder_guard::enforce(host, method, path, headers, body, &folders).await
 }
 
 /// Request-body transform hook. OSS: passthrough. The cloud build injects a

@@ -290,6 +290,7 @@ export const AppDetail = ({
                 <ConnectionAccountCard
                   key={conn.id}
                   connection={conn}
+                  provider={app.id}
                   appName={app.name}
                   onReconnect={(id) => openConnectPopup(id, popupOpts)}
                   pageScope={pageScope}

@@ -5,15 +5,13 @@
 // SHARED registry (configs without picker dialogs).
 import { granularAccessConfigs } from "@/lib/granular-access";
 import type { Connection } from "@/lib/api";
+import { GoogleDriveFolderScope } from "@/lib/policy-editor/google-drive-folder-scope";
 
 /**
- * The OSS resource-scope seam (step 9.5): granular per-resource scoping
- * (GitHub repositories / Dropbox folders on a connection's injected
- * credential) is a OneCLI Cloud capability — the OSS gateway has no guard to
- * enforce it and the API locks it with a 422. Rendered only where the real
- * editor would appear (a supported provider, editable context), as a locked
- * capability hint. The EE editions alias this file to
- * `@/ee/policy-editor/resource-scope` (the real fields).
+ * The OSS resource-scope seam (step 9.5): GitHub repositories / Dropbox folders
+ * stay Cloud-only (no OSS guard). ASHUB Google Drive `driveFolders` is enforced
+ * by this gateway, so the folder picker is live here. The EE editions alias
+ * this file to `@/ee/policy-editor/resource-scope` (the real fields).
  */
 
 export interface ResourceScopeFieldsProps {
@@ -29,7 +27,11 @@ export interface ResourceScopeFieldsProps {
 
 export const ResourceScopeFields: (
   props: ResourceScopeFieldsProps,
-) => React.JSX.Element | null = ({ connection, readOnly = false }) => {
+) => React.JSX.Element | null = (props) => {
+  const { connection, readOnly = false } = props;
+  if (connection.provider === "google-drive") {
+    return <GoogleDriveFolderScope {...props} />;
+  }
   const meta = (connection.metadata as Record<string, unknown> | null) ?? {};
   const config = granularAccessConfigs.get(connection.provider);
   if (!config?.isSupported(meta) || readOnly) return null;

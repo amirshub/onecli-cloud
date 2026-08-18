@@ -72,6 +72,12 @@ describe("sessionPolicySchema — granular per-resource scoping", () => {
     });
   });
 
+  it("accepts a Google Drive driveFolders policy", () => {
+    expect(
+      sessionPolicySchema.parse({ driveFolders: ["1BxiMVs0XRA5nFMdKvBdBZjlvNq5fjY7n"] }),
+    ).toEqual({ driveFolders: ["1BxiMVs0XRA5nFMdKvBdBZjlvNq5fjY7n"] });
+  });
+
   it("rejects an empty list — an unauthorable scope that used to mean the opposite", () => {
     // "Reach nothing" is expressed by clearing the policy (null), never by an
     // empty list, and an empty list was historically mis-read as "no scoping

@@ -13,14 +13,11 @@ import { googleCalendar } from "./google-calendar";
 import { googleChat } from "./google-chat";
 import { googleClassroom } from "./google-classroom";
 import { googleContacts } from "./google-contacts";
-import { googleDocs } from "./google-docs";
 import { googleDrive } from "./google-drive";
 import { googleForms } from "./google-forms";
 import { googleMeet } from "./google-meet";
 import { googlePhotos } from "./google-photos";
 import { googleSearchConsole } from "./google-search-console";
-import { googleSheets } from "./google-sheets";
-import { googleSlides } from "./google-slides";
 import { googleTasks } from "./google-tasks";
 import { mongodbAtlas } from "./mongodb-atlas";
 import { notion } from "./notion";
@@ -55,13 +52,10 @@ const staticApps: AppDefinition[] = [
   googleAdmin,
   googleAnalytics,
   googleClassroom,
-  googleDocs,
   googleForms,
   googleMeet,
   googlePhotos,
   googleSearchConsole,
-  googleSheets,
-  googleSlides,
   googleTasks,
   notion,
   jira,

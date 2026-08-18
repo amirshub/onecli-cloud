@@ -8,7 +8,7 @@ import {
 
 export const googleDrive: AppDefinition = {
   id: "google-drive",
-  name: "Google Drive",
+  name: "ASHUB Google Drive",
   icon: "/icons/google-drive.svg",
   description:
     "Drive, Docs, Sheets, and Slides — files, folders, and document APIs in one connection.",

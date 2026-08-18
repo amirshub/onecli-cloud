@@ -6,9 +6,9 @@
 //!
 //! Two locked narrowings vs the EE selector: identities match the AGENT ONLY
 //! (no principal set — directory identities are a OneCLI Cloud capability),
-//! and a connection's sessionPolicy is NEVER attached (the map value is always
-//! `None`) — granular resource scoping is Cloud-only and the OSS gateway has
-//! no guard to enforce it, so nothing may ever populate it here.
+//! and GitHub/Dropbox session policies are NEVER attached (those guards are
+//! Cloud-only). `driveFolders` on `google-drive` is attached: the OSS gateway
+//! enforces it per request in `drive_folder_guard`.
 //!
 //! Reads the RAW rows (not the assembler, which resolves connection/secret
 //! targets away) so the specific credential ids survive.
@@ -52,9 +52,10 @@ pub(crate) fn derive_inject_selection(rules: &PolicyV2Rules, agent_id: &str) -> 
                 }
                 "connection" => {
                     if let Some(id) = &t.app_connection_id {
-                        // ALWAYS `None`: sessionPolicy must never attach in OSS
-                        // (see the module doc).
-                        connections.insert(id.clone(), None);
+                        connections.insert(
+                            id.clone(),
+                            oss_drive_session_policy(row.conditions.as_ref()),
+                        );
                     }
                 }
                 "app" => {
@@ -74,12 +75,24 @@ pub(crate) fn derive_inject_selection(rules: &PolicyV2Rules, agent_id: &str) -> 
     InjectSelection {
         secret_ids,
         connections,
-        // OSS enforces no resource boundaries (there is no guard to enforce
-        // one), so nothing ever bounds a connection here.
+        // Org-level resource boundaries are Cloud-only.
         boundaries: HashMap::new(),
         app_scopes,
         secret_scopes,
     }
+}
+
+/// Attach only `driveFolders` — GitHub `repositories` / Dropbox `folders` have
+/// no OSS guard, so attaching them would be false security (or, for GitHub,
+/// cause `connect` to withhold the credential).
+fn oss_drive_session_policy(conditions: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let folders = conditions?.get("driveFolders")?.as_array()?;
+    Some(serde_json::json!({
+        "driveFolders": folders
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<_>>()
+    }))
 }
 
 #[cfg(test)]
@@ -176,9 +189,9 @@ mod tests {
     }
 
     #[test]
-    fn session_policy_is_never_attached() {
-        // The fixture rule carries conditions (a granular session policy); the
-        // selection must still map the connection to `None`.
+    fn github_and_dropbox_session_policy_is_never_attached() {
+        // The fixture rule carries GitHub `repositories`; that must stay `None`
+        // because OSS has no token scoper / Dropbox-style guard for it.
         let rules = v2(vec![rule(
             "allow",
             agent_identity("a1"),
@@ -186,6 +199,21 @@ mod tests {
         )]);
         let sel = derive_inject_selection(&rules, "a1");
         assert_eq!(sel.connections.get("c1"), Some(&None));
+    }
+
+    #[test]
+    fn drive_folders_session_policy_is_attached() {
+        let mut row = rule(
+            "allow",
+            agent_identity("a1"),
+            json!([{ "kind": "connection", "appConnectionId": "c1", "appTools": [] }]),
+        );
+        row.conditions = Some(json!({ "driveFolders": ["fold-1", "fold-2"] }));
+        let sel = derive_inject_selection(&v2(vec![row]), "a1");
+        assert_eq!(
+            sel.connections.get("c1"),
+            Some(&Some(json!({ "driveFolders": ["fold-1", "fold-2"] })))
+        );
     }
 
     #[test]

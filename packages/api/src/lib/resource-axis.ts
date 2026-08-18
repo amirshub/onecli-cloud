@@ -27,7 +27,7 @@ const asciiLower = (value: string): string =>
   value.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 interface ResourceAxis {
-  readonly key: "repositories" | "folders";
+  readonly key: "repositories" | "folders" | "driveFolders";
   normalize(entry: string): string;
   coveredBy(entry: string, boundary: readonly string[]): boolean;
   /** This axis's entries, or undefined when the policy doesn't carry the axis
@@ -72,7 +72,18 @@ const folders: ResourceAxis = {
   build: (entries) => ({ folders: entries }),
 };
 
-const AXES: readonly ResourceAxis[] = [repositories, folders];
+/** Google Drive folder IDs are opaque and flat for composition — nesting is
+ * resolved at request time in the gateway guard via parent-chain lookup. */
+const driveFolders: ResourceAxis = {
+  key: "driveFolders",
+  normalize: (entry) => entry,
+  coveredBy: (entry, boundary) => boundary.some((b) => b === entry),
+  entriesOf: (policy) =>
+    "driveFolders" in policy ? policy.driveFolders : undefined,
+  build: (entries) => ({ driveFolders: entries }),
+};
+
+const AXES: readonly ResourceAxis[] = [repositories, folders, driveFolders];
 
 /** The axis a policy is written on, by its single key. */
 export const axisOf = (policy: unknown): ResourceAxis | undefined => {

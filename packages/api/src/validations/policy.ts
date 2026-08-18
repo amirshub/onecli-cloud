@@ -77,6 +77,7 @@ const resourceList = (max: number, itemMax: number) =>
 export const sessionPolicySchema = z.union([
   z.object({ repositories: resourceList(1000, 400) }).strict(),
   z.object({ folders: resourceList(100, 1024) }).strict(),
+  z.object({ driveFolders: resourceList(100, 256) }).strict(),
 ]);
 export type SessionPolicyInput = z.infer<typeof sessionPolicySchema>;
 
@@ -130,7 +131,7 @@ const sessionPolicyNeedsConnection = {
     !isSessionPolicy(d.conditions) ||
     (d.targets ?? []).some((t) => t.kind === "connection"),
   message:
-    "resource scoping (repositories/folders) requires a connection target",
+    "resource scoping (repositories/folders/drive folders) requires a connection target",
 };
 
 export const createPolicyRuleSchema = z

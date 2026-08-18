@@ -236,9 +236,8 @@ pub(crate) async fn forward_request(
             .filter(|_| content_length_at_most(req.headers(), MAX_DEFAULT_INTERCEPT_BODY));
 
     // Buffer the request body for condition matching, when the request guard needs
-    // to inspect it (e.g. Dropbox folder scoping reads the JSON body), or for a
-    // matched default interception. In OSS, both predicates return false → zero
-    // overhead unless a default interception matched.
+    // to inspect it (Google Drive folder scoping reads JSON `parents`), or for a
+    // matched default interception.
     let (condition_buffer, req) = if crate::policy_engine::needs_body_buffer(&rules.policy_rules_v2)
         || hooks::needs_request_body(rules, host, method.as_str(), &path)
     {

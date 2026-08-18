@@ -26,15 +26,21 @@ pub(crate) fn compose_resource_scope(
     selected.cloned()
 }
 
-/// Whether a resource scope reaches NOTHING. OSS stores no scopes.
-pub(crate) fn scope_reaches_nothing(_policy: Option<&serde_json::Value>) -> bool {
-    false
+/// Whether a resource scope reaches NOTHING. Empty `driveFolders` is deny-all
+/// (the same sentinel EE uses for empty repo/folder lists). GitHub/Dropbox
+/// scopes are not enforced on OSS and are never attached by inject-select.
+pub(crate) fn scope_reaches_nothing(policy: Option<&serde_json::Value>) -> bool {
+    policy
+        .and_then(|p| p.get("driveFolders"))
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| a.is_empty())
 }
 
-/// Whether this provider enforces a resource scope per REQUEST. OSS has no
-/// request guards, so nothing is enforced that way.
-pub(crate) fn has_request_guard(_provider: &str) -> bool {
-    false
+/// Whether this provider enforces a resource scope per REQUEST. OSS enforces
+/// `google-drive` `driveFolders` in `drive_folder_guard` (the stored token is
+/// account-wide; the guard restricts each call). GitHub/Dropbox stay Cloud-only.
+pub(crate) fn has_request_guard(provider: &str) -> bool {
+    provider == "google-drive"
 }
 
 /// Whether this credential type mints a RESOURCE-SCOPED credential from the

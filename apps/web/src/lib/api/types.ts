@@ -38,6 +38,12 @@ export interface DropboxFolder {
   pathDisplay: string;
 }
 
+export interface GoogleDriveFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
 export interface Secret {
   id: string;
   name: string;
@@ -413,7 +419,10 @@ export interface LastPublish {
 
 /** A grant's session policy ("Resources"): which repositories/folders the
  * connection's injected credential may reach. One strict axis per provider. */
-export type GrantResources = { repositories: string[] } | { folders: string[] };
+export type GrantResources =
+  | { repositories: string[] }
+  | { folders: string[] }
+  | { driveFolders: string[] };
 
 export interface AgentGrantConnection {
   connectionId: string;

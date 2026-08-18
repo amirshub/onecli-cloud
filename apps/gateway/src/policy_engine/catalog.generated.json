@@ -1871,11 +1871,83 @@
     }
   },
   "google-drive": {
+    "append_values": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*/values/*:append"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "batch_get_values": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*/values:batchGet"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "batch_update_document": {
+      "hostPattern": "docs.googleapis.com",
+      "paths": [
+        "/v1/documents/*:batchUpdate"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "batch_update_presentation": {
+      "hostPattern": "slides.googleapis.com",
+      "paths": [
+        "/v1/presentations/*:batchUpdate"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "batch_update_values": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*/values:batchUpdate"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "create_document": {
+      "hostPattern": "docs.googleapis.com",
+      "paths": [
+        "/v1/documents"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
     "create_file": {
       "hostPattern": "www.googleapis.com",
       "paths": [
         "/drive/v3/files",
         "/upload/drive/v3/files"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "create_presentation": {
+      "hostPattern": "slides.googleapis.com",
+      "paths": [
+        "/v1/presentations"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    "create_spreadsheet": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets"
       ],
       "methods": [
         "POST"
@@ -1888,6 +1960,15 @@
       ],
       "methods": [
         "DELETE"
+      ]
+    },
+    "get_document": {
+      "hostPattern": "docs.googleapis.com",
+      "paths": [
+        "/v1/documents/*"
+      ],
+      "methods": [
+        "GET"
       ]
     },
     "get_file": {
@@ -1903,6 +1984,42 @@
       "hostPattern": "www.googleapis.com",
       "paths": [
         "/drive/v3/files/*"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "get_page": {
+      "hostPattern": "slides.googleapis.com",
+      "paths": [
+        "/v1/presentations/*/pages/*"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "get_presentation": {
+      "hostPattern": "slides.googleapis.com",
+      "paths": [
+        "/v1/presentations/*"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "get_spreadsheet": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    "get_values": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*/values/*"
       ],
       "methods": [
         "GET"
@@ -1943,6 +2060,15 @@
       ],
       "methods": [
         "PATCH"
+      ]
+    },
+    "update_values": {
+      "hostPattern": "sheets.googleapis.com",
+      "paths": [
+        "/v4/spreadsheets/*/values/*"
+      ],
+      "methods": [
+        "PUT"
       ]
     },
     "write_all": {

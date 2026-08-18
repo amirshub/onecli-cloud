@@ -67,6 +67,14 @@ const toGrantResources = (
       folders: folders.filter((f): f is string => typeof f === "string"),
     };
   }
+  const driveFolders = policy["driveFolders"];
+  if (Array.isArray(driveFolders)) {
+    return {
+      driveFolders: driveFolders.filter(
+        (f): f is string => typeof f === "string",
+      ),
+    };
+  }
   return null;
 };
 

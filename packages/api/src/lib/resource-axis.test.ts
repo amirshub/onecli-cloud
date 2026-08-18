@@ -16,6 +16,7 @@ describe("axisOf", () => {
   it("recognizes each axis and nothing else", () => {
     expect(axisOf({ repositories: ["org/a"] })?.key).toBe("repositories");
     expect(axisOf({ folders: ["/x"] })?.key).toBe("folders");
+    expect(axisOf({ driveFolders: ["folder-id"] })?.key).toBe("driveFolders");
     expect(axisOf({})).toBeUndefined();
     expect(axisOf(null)).toBeUndefined();
     expect(axisOf([{ type: "body_contains", value: "x" }])).toBeUndefined();
@@ -26,6 +27,7 @@ describe("deniesEverything", () => {
   it("is true only for an explicitly empty allowlist", () => {
     expect(deniesEverything({ repositories: [] })).toBe(true);
     expect(deniesEverything({ folders: [] })).toBe(true);
+    expect(deniesEverything({ driveFolders: [] })).toBe(true);
     expect(deniesEverything({ repositories: ["org/a"] })).toBe(false);
     // Absent axis, empty object, behavioral conditions: not a restriction.
     expect(deniesEverything({})).toBe(false);
@@ -55,6 +57,12 @@ describe("coveredBy", () => {
     expect(coveredBy("/", { folders: ["/clients"] })).toBe(false);
     // A root boundary contains everything.
     expect(coveredBy("/anything", { folders: ["/"] })).toBe(true);
+  });
+
+  it("matches drive folder IDs exactly", () => {
+    const boundary = { driveFolders: ["folder-a", "folder-b"] };
+    expect(coveredBy("folder-a", boundary)).toBe(true);
+    expect(coveredBy("folder-c", boundary)).toBe(false);
   });
 
   it("treats a non-policy boundary as unbounded", () => {
