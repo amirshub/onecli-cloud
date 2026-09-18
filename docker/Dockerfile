@@ -28,6 +28,9 @@ RUN cargo build --release
 # Stage 2: Prepare Node.js base
 # ──────────────────────────────────────────────
 FROM node:22-alpine AS base
+# glibc compat for native binaries (turbo, Next.js, Prisma) on musl Alpine.
+# See https://github.com/nodejs/docker-node#nodealpine
+RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 WORKDIR /app
 
@@ -35,8 +38,12 @@ WORKDIR /app
 # Stage 3: Prune monorepo to web + db packages
 # ──────────────────────────────────────────────
 FROM base AS pruner
+# Pin to the lockfile version. `pnpm dlx turbo` (and turbo@^2.8.3) resolve to
+# latest 2.11.1, which was published without matching @turbo/linux-64 binaries,
+# so npm reports success while the native binary is missing.
+RUN npm install -g turbo@2.8.11
 COPY . .
-RUN pnpm dlx turbo prune @onecli/web --docker
+RUN turbo prune @onecli/web --docker
 
 # ──────────────────────────────────────────────
 # Stage 4: Install dependencies
@@ -78,7 +85,7 @@ WORKDIR /app
 # shell nor Node is a real init (orphans are never reaped, signal handling
 # differs). See
 # https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md#handling-kernel-signals
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini libc6-compat
 ENTRYPOINT ["/sbin/tini", "--"]
 
 ENV NODE_ENV=production
