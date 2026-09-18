@@ -24,9 +24,11 @@ import {
 import {
   generatePkcePair,
   OAUTH_PKCE_COOKIE_NAME,
-  oauthPkceCookiePath,
+  oauthFlowCookieOptions,
+  oauthFlowCookiePath,
+  rememberPkceVerifier,
+  takePkceVerifier,
 } from "../lib/oauth-pkce";
-import { NODE_ENV } from "../lib/env";
 import { dashboardUrl } from "../lib/dashboard-url";
 import { getRequestOrigin, getAppOrigin } from "../lib/request-origin";
 import { buildFragmentBridgeHtml } from "../lib/fragment-bridge";
@@ -418,6 +420,7 @@ export const appRoutes = () => {
       const connectionId = c.req.query("connectionId");
       const rawAgentName = c.req.query("agent_name");
       const agentName = rawAgentName ? rawAgentName.slice(0, 128) : undefined;
+      const nonce = generateNonce();
 
       // Decide where the browser goes *after* consent here, at the authenticated
       // end, and sign it: the callback is unauthenticated, so re-deriving it
@@ -425,7 +428,7 @@ export const appRoutes = () => {
       const state = signOAuthState({
         projectId,
         provider,
-        nonce: generateNonce(),
+        nonce,
         origin: getAppOrigin(c.req.raw),
         ...(connectionId ? { connectionId } : {}),
         ...(agentName ? { agentName } : {}),
@@ -466,22 +469,13 @@ export const appRoutes = () => {
           : {}),
       });
 
-      setCookie(c, "oauth_state", state, {
-        httpOnly: true,
-        secure: NODE_ENV === "production",
-        sameSite: "Lax",
-        path: `/v1/apps/${provider}/callback`,
-        maxAge: 600,
-      });
+      const cookieOptions = oauthFlowCookieOptions(provider, c.req.raw);
+
+      setCookie(c, "oauth_state", state, cookieOptions);
 
       if (pkce) {
-        setCookie(c, OAUTH_PKCE_COOKIE_NAME, pkce.codeVerifier, {
-          httpOnly: true,
-          secure: NODE_ENV === "production",
-          sameSite: "Lax",
-          path: oauthPkceCookiePath(provider),
-          maxAge: 600,
-        });
+        rememberPkceVerifier(nonce, pkce.codeVerifier);
+        setCookie(c, OAUTH_PKCE_COOKIE_NAME, pkce.codeVerifier, cookieOptions);
       }
 
       return c.redirect(authUrl);
@@ -494,12 +488,12 @@ export const appRoutes = () => {
     const apiOrigin = getRequestOrigin(c.req.raw);
 
     // Resolve the state before anything else can redirect or render. It arrives
-    // in the query, or in the `oauth_state` cookie `/authorize` set on this exact
-    // path (SameSite=Lax, so the provider's top-level GET still carries it) —
-    // which is why the fragment-bridge branch below can rely on it even though
-    // its provider returns everything else in the URL fragment. That branch
-    // renders the origin inside a <script>, so it is the last place that should
-    // be trusting request headers.
+    // in the query, or in the `oauth_state` cookie `/authorize` set for this
+    // provider path (SameSite=Lax, so the provider's top-level GET still
+    // carries it) — which is why the fragment-bridge branch below can rely on
+    // it even though its provider returns everything else in the URL fragment.
+    // That branch renders the origin inside a <script>, so it is the last
+    // place that should be trusting request headers.
     const stateParam = c.req.query("state") ?? getCookie(c, "oauth_state");
     const state = stateParam ? verifyOAuthState(stateParam) : null;
     // Only a state this request would actually accept gets to choose the
@@ -614,12 +608,14 @@ export const appRoutes = () => {
       const url = new URL(c.req.url);
       const callbackParams = Object.fromEntries(url.searchParams.entries());
 
-      const codeVerifier =
-        appDef.connectionMethod.requiresPkce === true
-          ? getCookie(c, OAUTH_PKCE_COOKIE_NAME)
-          : undefined;
-      if (appDef.connectionMethod.requiresPkce === true && !codeVerifier) {
-        return errorRedirect("Missing PKCE verifier");
+      let codeVerifier: string | undefined;
+      if (appDef.connectionMethod.requiresPkce === true) {
+        codeVerifier = getCookie(c, OAUTH_PKCE_COOKIE_NAME);
+        const stored = state.nonce ? takePkceVerifier(state.nonce) : undefined;
+        codeVerifier ??= stored;
+        if (!codeVerifier) {
+          return errorRedirect("Missing PKCE verifier");
+        }
       }
 
       const result = await appDef.connectionMethod.exchangeCode({
@@ -631,7 +627,7 @@ export const appRoutes = () => {
 
       if (appDef.connectionMethod.requiresPkce === true) {
         deleteCookie(c, OAUTH_PKCE_COOKIE_NAME, {
-          path: oauthPkceCookiePath(provider),
+          path: oauthFlowCookiePath(provider),
         });
       }
 
@@ -709,7 +705,7 @@ export const appRoutes = () => {
       }
 
       deleteCookie(c, "oauth_state", {
-        path: `/v1/apps/${provider}/callback`,
+        path: oauthFlowCookiePath(provider),
       });
 
       return c.redirect(

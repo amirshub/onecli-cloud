@@ -143,7 +143,7 @@ describe("oauth callback origin comes from the signed state", () => {
   // The fragment-bridge page embeds this origin inside a <script> block
   // (JSON.stringify does not neutralize "</script>"), so it is the worst place
   // to trust a header. The state reaches it via the `oauth_state` cookie that
-  // /authorize set on this exact path, which is why it can be trusted at all.
+  // /authorize set for this provider path, which is why it can be trusted at all.
   it("uses the signed origin on the fragment-bridge page, taking the state from the cookie", async () => {
     delete process.env.APP_URL;
 
