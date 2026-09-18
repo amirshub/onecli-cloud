@@ -5,11 +5,17 @@ import Link from "next/link";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { API_ORIGIN } from "@/lib/api-fetch";
 import { APP_URL, IS_CLOUD } from "@/lib/env";
+import { usePublicAppUrl } from "@/providers/public-url-provider";
 
 const useBaseUrl = () => {
+  // Called unconditionally — Rules of Hooks. Cloud ignores it below.
+  const publicUrl = usePublicAppUrl()?.replace(/\/+$/, "");
   if (IS_CLOUD) return API_ORIGIN || APP_URL;
-  // Self-hosted: prefer an explicitly configured public URL (matches the server's
-  // redirect_uri); otherwise fall back to the current origin.
+  // Runtime APP_URL from the server — same value OAuth uses. Do not prefer
+  // window.location.origin: opening the dashboard via a LAN IP (or SSH
+  // bind-host) would advertise that IP as the callback even when APP_URL is
+  // localhost. NEXT_PUBLIC_APP_URL is build-time only and is ignored in Docker.
+  if (publicUrl) return publicUrl;
   const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "");
   if (configured) return configured;
   return typeof window !== "undefined" ? window.location.origin : APP_URL;

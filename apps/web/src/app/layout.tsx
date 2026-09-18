@@ -6,6 +6,8 @@ import "./globals.css";
 import { AuthProvider } from "@/providers/auth-provider";
 import { getAuthMode } from "@/lib/auth/auth-mode";
 import { GATEWAY_API_URL, IS_CLOUD } from "@/lib/env";
+import { resolvePublicAppUrl } from "@/lib/public-app-url";
+import { PublicUrlProvider } from "@/providers/public-url-provider";
 import { QueryProvider } from "@/providers/query-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { Toaster } from "@onecli/ui/components/sonner";
@@ -46,12 +48,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const authMode = getAuthMode();
+  const { appUrl } = await resolvePublicAppUrl();
 
   return (
     <html lang="en" suppressHydrationWarning className="bg-background">
@@ -76,9 +79,11 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <ThemeColorSync />
-              {children}
-              <Toaster />
+              <PublicUrlProvider appUrl={appUrl}>
+                <ThemeColorSync />
+                {children}
+                <Toaster />
+              </PublicUrlProvider>
             </ThemeProvider>
           </QueryProvider>
         </AuthProvider>

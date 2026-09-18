@@ -46,13 +46,13 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-onecli}:${POSTGRES_PASSWORD:-onecli}@postgres:5432/${POSTGRES_DB:-onecli}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
-      # The public URL users reach OneCLI on. The gateway needs it to build the
-      # links it puts in agent-facing responses — it answers proxy calls, so it
-      # has no browser request to derive an address from.
+      # The public URL users reach OneCLI on. OAuth redirect_uri, the dashboard
+      # Redirect URI copy box, and gateway-issued links all use this.
       #
-      # ONECLI_BIND_HOST is only for Docker port publishing (e.g. 0.0.0.0).
-      # Browser and OAuth need a real hostname — default localhost. If you bind
-      # to a LAN IP, set ONECLI_PUBLIC_HOST (or APP_URL) to the host users open.
+      # ONECLI_BIND_HOST is only for Docker port publishing (e.g. 0.0.0.0) and
+      # is never the callback host. Set APP_URL (or ONECLI_PUBLIC_HOST) to the
+      # host users actually type — localhost for an SSH tunnel:
+      #   APP_URL=http://localhost:10254
       APP_URL: ${APP_URL:-http://${ONECLI_PUBLIC_HOST:-localhost}:${ONECLI_APP_PORT:-10254}}
       GATEWAY_API_URL: http://${ONECLI_BIND_HOST:-127.0.0.1}:${ONECLI_GATEWAY_PORT:-10255}
       # Where the gateway reaches the Node API. Both run in this one container

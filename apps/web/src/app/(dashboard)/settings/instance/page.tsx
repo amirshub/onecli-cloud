@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import {
-  configuredAppUrl,
-  originFromHeaders,
-} from "@onecli/api/lib/app-origin";
 import { PageHeader } from "@dashboard/page-header";
-import { APP_URL } from "@/lib/env";
+import { resolvePublicAppUrl } from "@/lib/public-app-url";
 import { PublicUrlCard } from "./_components/public-url-card";
 import { BuildVersionCard } from "./_components/build-version-card";
 
@@ -14,11 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function InstancePage() {
-  // Resolve exactly the way the OAuth callback does, so the card reports the
-  // address actually in use rather than the `lib/env.ts` localhost default —
-  // which, on an unconfigured instance, is a value nothing consults.
-  const configured = configuredAppUrl();
-  const appUrl = configured ?? originFromHeaders(await headers()) ?? APP_URL;
+  const { appUrl, autoDetected } = await resolvePublicAppUrl();
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -26,7 +17,7 @@ export default async function InstancePage() {
         title="Instance"
         description="Instance configuration for your self-hosted deployment."
       />
-      <PublicUrlCard appUrl={appUrl} autoDetected={!configured} />
+      <PublicUrlCard appUrl={appUrl} autoDetected={autoDetected} />
       <BuildVersionCard />
     </div>
   );
